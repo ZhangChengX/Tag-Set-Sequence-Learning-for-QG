@@ -30,6 +30,6 @@ class SemanticRoleLabeling(object):
                 l = item[1:-1].split(': ')
                 label[l[0]] = l[1]
             labels.append(label)
-            
+        
         return labels
 
