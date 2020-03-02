@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # coding: utf-8
 
 from allennlp.predictors.predictor import Predictor
