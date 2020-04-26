@@ -7,7 +7,7 @@ warnings.simplefilter('ignore')
 from libs.semantic_role_labeling import SemanticRoleLabeling
 from libs.named_entity_recognition import NamedEntityRecognition
 from libs.dependency_parsing import DependencyParsing
-from libs.coreference_resolution import CoreferenceResolution
+# from libs.coreference_resolution import CoreferenceResolution
 from libs.sentence_simplification import SentenceSimplification
 from libs.wordnet import WordNet
 import config
@@ -30,7 +30,7 @@ class QuestionGeneration:
         self.srl = SemanticRoleLabeling()
         self.dp = DependencyParsing()
         self.ss = SentenceSimplification()
-        self.cr = CoreferenceResolution()
+        # self.cr = CoreferenceResolution()
         self.wn = WordNet()
         self.rules = helper.load_rules(config.rules_path)
         if config.debug:
@@ -40,7 +40,7 @@ class QuestionGeneration:
     def generate(self, text):
         rst = []
         # Coreference Resolution
-        text = self.cr.predict(text)
+        # text = self.cr.predict(text)
         # Sentence Simplification
         sentences = self.ss.simplify(text)
         # # Split sentences
@@ -57,8 +57,10 @@ class QuestionGeneration:
         word_list = sentence.split(' ')
         if len(word_list) < 3: return []
         if sentence[-1:] == '?': return []
-        if word_list[0] in ['Who', 'Whose', 'What', 'Where', 'When', 'Which', 'Why', 'How']:
+        if word_list[0].lower() in ['who', 'whose', 'what', 'where', 'when', 'which', 'why', 'how']:
             return []
+        if word_list[0].lower() in ['and', 'but', 'for', 'or', 'plus', 'so', 'therefore']:
+            sentence = sentence.replace(word_list[0], '')
         
         question_list = []
 
@@ -66,30 +68,31 @@ class QuestionGeneration:
         decla_tags_list = self.preprocess(sentence)
 
         # Previous version, rules based QG
-        for tags_list in decla_tags_list:
-            labels = {}
-            ne_tags = []
-            pos_tags = []
-            for tags in tags_list:
-                if tags['SR']:
-                    labels[tags['SR']] = tags['W']
-                ne_tags.append((tags['NE'], tags['W']))
-                pos_tags.append((tags['W'], tags['POS']))
-            rbqg = rulebased.who(labels, ne_tags, pos_tags)
-            if rbqg:
-                rbqg['Sentence'] = sentence
-                question_list.append(rbqg)
-            rbqg = rulebased.why(labels, ne_tags)
-            if rbqg:
-                rbqg['Sentence'] = sentence
-                question_list.append(rbqg)
-        # Remove duplicates
-        ques_list = []
-        for tmp in question_list.copy():
-            if tmp['Question'] in ques_list:
-                question_list.remove(tmp)
-            else:
-                ques_list.append(tmp['Question'])
+        if config.rule_based:
+            for tags_list in decla_tags_list:
+                labels = {}
+                ne_tags = []
+                pos_tags = []
+                for tags in tags_list:
+                    if tags['SR']:
+                        labels[tags['SR']] = tags['W']
+                    ne_tags.append((tags['NE'], tags['W']))
+                    pos_tags.append((tags['W'], tags['POS']))
+                rbqg = rulebased.who(labels, ne_tags, pos_tags)
+                if rbqg:
+                    rbqg['Sentence'] = sentence
+                    question_list.append(rbqg)
+                rbqg = rulebased.why(labels, ne_tags)
+                if rbqg:
+                    rbqg['Sentence'] = sentence
+                    question_list.append(rbqg)
+            # Remove duplicates
+            ques_list = []
+            for tmp in question_list.copy():
+                if tmp['Question'] in ques_list:
+                    question_list.remove(tmp)
+                else:
+                    ques_list.append(tmp['Question'])
         # Previous version, rules based QG
 
         for decla_tags in decla_tags_list:
@@ -124,6 +127,7 @@ class QuestionGeneration:
                     continue
 
                 if config.debug:
+                    print('### Matching')
                     print('Question word: ' + ques_word)
                     print('Declarative Sentense:')
                     print(' '.join([tag['W'] for tag in decla_tags]))
@@ -146,6 +150,8 @@ class QuestionGeneration:
 
                 # Generate question according to the seq
                 question = helper.generate_question_by_seq(ques_word, decla_tags, question_seq, answer_tags, self.wn)
+                if not question:
+                    continue
                 
                 if 1 == len(answer_tags):
                     if answer_tags[0] in decla_seq:
@@ -163,6 +169,9 @@ class QuestionGeneration:
     
     def preprocess(self, sentence:str):
         sentence = sentence.replace("’", "'")
+        sentence = sentence.replace("`", "'")
+        sentence = sentence.replace('“', '"')
+        sentence = sentence.replace('”', '"')
         sentence = sentence.replace("'ve", " have")
         # didn't -> did not, haven't -> have not, can't -> can not
         if "can't" in sentence:
@@ -178,24 +187,31 @@ class QuestionGeneration:
         # Semantic Role Labeling
         sr_tags_list = self.srl.predict(sentence)
 
-        # print('sentence = ' + str(sentence))
-        # print('pos_tags = ' + str(pos_tags))
-        # print('sr_tags_list = ' + str(sr_tags_list))
+        if config.debug:
+            print('sr_tags_list before preprocess:')
+            print('sr_tags_list = ' + str(sr_tags_list))
 
         sr_tags_list = helper.preprocess_sr_tags(sr_tags_list, pos_tags)
 
-        # print('sr_tags_list:')
-        # print(sr_tags_list)
+        if config.debug:
+            print('sr_tags_list after preprocess:')
+            print('sr_tags_list = ' + str(sr_tags_list))
         
         rst = []
         for sr_tags in sr_tags_list:
-            rst.append(helper.merge_tags(pos_tags, ne_tags, sr_tags))
+            if len(sr_tags) < 3:
+                continue
+            merged_tags = helper.merge_tags(pos_tags, ne_tags, sr_tags)
+            rst.append(merged_tags)
 
-            # if config.debug:
-            #     print(sentence)
-            #     print('pos_tags = ' + str(pos_tags))
-            #     print('ne_tags = ' + str(ne_tags))
-            #     print('sr_tags = ' + str(sr_tags))
+            if config.debug:
+                print('### Pre-processing ###')
+                print(sentence)
+                print('pos_tags = ' + str(pos_tags))
+                print('ne_tags = ' + str(ne_tags))
+                print('sr_tags = ' + str(sr_tags))
+                print('merged_tags = ' + str(merged_tags))
+                print([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in merged_tags])
         
         # return [[{'a':'b'}]]
         return rst

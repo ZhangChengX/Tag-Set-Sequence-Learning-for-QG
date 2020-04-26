@@ -74,20 +74,86 @@ def get_new_interro_tags_by_decla_interro_tags(decla_tags:list, interro_tags:lis
     return new_interro_tags
 
 def preprocess_sr_tags(sr_tags_list:list, pos_tags:list):
+
+    # TODO bug need to be fixed:
+
+    # Tom is able to be driven to Boston by John.
+
+    # sr_tags_list before preprocess:
+
+    # sr_tags_list = [{'ARG1': 'Tom', 'V': 'is', 'ARG2': 'able to be driven to Boston by John'}, {'V': 'be'}, {'ARG1': 'Tom', 'V': 'driven', 'ARG2': 'to Boston', 'ARG0': 'by John'}]
+
+    # sr_tags_list after preprocess: 错误
+
+    # sr_tags_list = [[('ARG1', 'Tom'), ('ARG1', 'Tom'), ('V', 'is'), ('ARG2', 'able to be driven to Boston by John'), ('ARG2', 'to Boston'), ('V', 'be'), ('V', 'driven'), ('ARG0', 'by John'), ('.', '.')]]
+
+
+
     rst = []
-    is_merge = False
-    for sr_tags in sr_tags_list:
-        if len(sr_tags) < 3 and len(sr_tags_list) > 1:
-            is_merge = True
-    if is_merge:
-        rst = merge_sr_tags(sr_tags_list, pos_tags)
-    else:
-        for sr_dict in sr_tags_list:
-            sr_tags = []
-            for k, v in sr_dict.items():
-                sr_tags.append((k, v))
-            rst.append(sr_tags)
+    # Check if there is any short tag list contain V need to be merged in
+    to_be_merge_list = []
+    verb_phrase = ''
+    for sr_dict in sr_tags_list.copy():
+        arg3_list = [k[:3] for k in sr_dict.keys()]
+        arg4_list = [k[:4] for k in sr_dict.keys()]
+        if 1 == len(sr_dict) and 'V' in sr_dict:
+            to_be_merge_list.append(sr_dict)
+            sr_tags_list.remove(sr_dict)
+            verb_phrase = verb_phrase + ' ' + sr_dict['V']
+        elif 2 == len(sr_dict) and 'ARG' in arg3_list and 'ARGM' not in arg4_list:
+            sr_tags_list.remove(sr_dict)
+            continue
+        elif 2 == len(sr_dict):
+            to_be_merge_list.append(sr_dict)
+            sr_tags_list.remove(sr_dict)
+            verb_phrase = verb_phrase + ' ' + list(sr_dict.values())[0] + ' ' + list(sr_dict.values())[1]
+        elif 0 == len(sr_dict):
+            sr_tags_list.remove(sr_dict)
+
+    # If more than one long tag list, check which tag list need to be merged with V
+    sentence = ' '.join([tag[0] for tag in pos_tags])
+    for sr_dict in sr_tags_list:
+        # rewrite V tag
+        if 'going' == verb_phrase[-5:]:
+            # be going to
+            verb_phrase = verb_phrase + ' ' + 'to'
+        tmp_phrase1 = verb_phrase + ' ' + sr_dict['V']
+        tmp_phrase2 = sr_dict['V'] + ' ' + verb_phrase
+        if tmp_phrase1 in sentence:
+            sr_dict['V'] = tmp_phrase1
+        elif tmp_phrase2 in sentence:
+            sr_dict['V'] = tmp_phrase2
+
+        # Re-format
+        sr_tags = []
+        for k, v in sr_dict.items():
+            sr_tags.append((k, v))
+        rst.append(sr_tags)
+
     return rst
+
+
+    # rst = []
+    # is_merge = False
+    # # Check if the sr_tags_list can be merged
+    # for sr_dict in sr_tags_list:
+    #     if len(sr_dict) < 3 and len(sr_tags_list) > 1:
+    #         # Get the word phrase
+    #         tmp_words = ' '.join([v for v in sr_dict.values()])
+    #         # if the word phrase not in other sr_dict, is_merge set True
+    #         for sr_dict_2 in sr_tags_list:
+    #             if (sr_dict_2 != sr_dict) and (tmp_words not in ' '.join([v for v in sr_dict_2.values()])):
+    #                 is_merge = True
+    # if is_merge:
+    #     rst = merge_sr_tags(sr_tags_list, pos_tags)
+    # else:
+    #     for sr_dict in sr_tags_list:
+    #         sr_tags = []
+    #         for k, v in sr_dict.items():
+    #             sr_tags.append((k, v))
+    #         rst.append(sr_tags)
+
+    # return rst
 
 # [
 # {'V': 'is'}, 
@@ -132,58 +198,18 @@ def merge_sr_tags(sr_tags_list:list, pos_tags:list):
     # Sort sr_tags by order list
     return [sorted(sr_tags, key = lambda i: order[sr_tags.index(i)])]
 
-# Deprecated
-def merge_sr_tags2(sr_tags_list:list, pos_tags:list):
-    # if more than one sub sr_tags, remove be verb
-    # e.g. [{'ARG1': 'Tom', 'V': 'is', 'ARG2': 'about to drive to Boston'}, 
-    #       {'ARG0': 'Tom', 'V': 'drive', 'ARG1': 'to Boston'}]
-    tmp_sr_tags_list = [tag for tag in sr_tags_list if len(tag) > 2]
-    if len(tmp_sr_tags_list) > 1:
-        for tmp_sr_tags in tmp_sr_tags_list:
-            if tmp_sr_tags['V'] in ['be', 'am', 'is', 'are', 'was', 'ware']:
-                sr_tags_list.remove(tmp_sr_tags)
-    sr_tags = []
-    # Get unsorted sr_tags
-    for sr_dict in sr_tags_list:
-        for k, v in sr_dict.items():
-            sr_tags.append((k, v)) 
-    if len(sr_tags_list) < 2:
-        return sr_tags
-    # Get order list
-    order = []
-    word_list = [tag[0] for tag in pos_tags]
-    for tag in sr_tags:
-        if tag[1] in word_list:
-            index = word_list.index(tag[1])
-            order.append(index)
-        else:
-            if ' ' in tag[1]:
-                t = tag[1].split()
-                index0 = word_list.index(t[0])
-                index1 = word_list.index(t[1])
-                if index0 + 1 == index1:
-                    order.append(index0)
-                else:
-                    if index0 in order:
-                        order.append(index1)
-                    else:
-                        order.append(index0)
-            else:
-                print('Error in merge_sr_tags()')
-    # Sort sr_tags by order list
-    return [sorted(sr_tags, key = lambda i: order[sr_tags.index(i)])]
-
 def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
     tags_list = []
     last_value = ''
     current_value = ''
     is_in_sr_tag = False
     is_eq_sr_tag = False
+    phrase_ne_tag_list = []
     i = 0
     for i in range(len(pos_tags)):
         if pos_tags[i][1] == '.':
             continue
-        # Check if any label contains tag, label could be a phrase.
+        # Check if any SR label contains tag, SR label could be a phrase.
         for sr_tag in sr_tags:
             if pos_tags[i][0] == sr_tag[1]:
                 is_eq_sr_tag = True
@@ -202,14 +228,21 @@ def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
             # if current tag and previous tag are same SR tag, remove previous and add new one.
             if last_value == current_value:
                 tags_list.pop()
+                # save each ne_tag to list in a phrase
+                phrase_ne_tag_list.append(ne_tag)
             # # Get key by value in dict
             # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
             sr_tags_words = [t[1] for t in sr_tags]
             index = sr_tags_words.index(current_value)
+            # if ne_tag contains more than 1 other tags, change the ne_tag to empty.
+            if phrase_ne_tag_list.count('') > 1:
+                ne_tag = ''
             tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
             tags_list.append(tmp)
             last_value = current_value
         elif is_eq_sr_tag:
+            # Empty the list if the word is not in a phase
+            phrase_ne_tag_list = []
             # # Get key by value in dict
             # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
             sr_tags_words = [t[1] for t in sr_tags]
@@ -217,6 +250,9 @@ def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
             tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
             tags_list.append(tmp)
         else:
+            # Empty the list if the word is not in a phase
+            phrase_ne_tag_list = []
+
             if pos_tags[i][0] == 'not':
                 tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': 'ARGM-NEG', 'W': pos_tags[i][0]}
             else:
@@ -309,33 +345,51 @@ def is_tag_match(tag1, tag2):
 
 def get_question_seq_by_rule(decla_seq:list, rule:dict):
     # 已知：
-    # X1 = [A, B, C, G]
-    # X2 = [W, Y, A, C, G]
-    # Y1 = [A, B, C, D, E]
+    # Xd = [A, B, C, G]
+    # Xi = [W, Y, A, C, G]
+    # Yd = [A, B, C, D, E]
     # 未知：
-    # Y2 = [W, Y, A, C, D, E]
+    # Yi = [W, Y, A, C, D, E]
 
-    # X1和Y1有共同子序列
-    # X2和Y2有共同子序列
-    # X1和X2有共同子序列
-    # 根据X1->X2的转换规则 由Y1转换成Y2
+    # Xd和Yd有共同子序列
+    # Xi和Yi有共同子序列
+    # Xd和Xi有共同子序列
+    # 根据Xd->Xi的转换规则 由Yd转换成Yi
 
-    # 先把X2 复制到Y2
-    # Y2中去掉Y1没有但是在X1和X2都有的 G
-    # 得到Y1有，X2(或Y2)没有的 B D E
-    # 找到X1有，X2没有的 B
-    # BDE 中去掉 B， 加入到Y2中
+    # 先把Xi 复制到Yi
+    # Yi中去掉Yd没有但是在Xd和Xi都有的 G
+    # 得到Yd有，Xi(或Y2)没有的 B D E
+    # 找到Xd有，Xi没有的 B
+    # BDE 中去掉 B， 加入到Yi中
+    # Xd有，Xi没有的元素一般是待生成问题的答案
 
+    # 先把Xi 复制到Yi
     new_seq = rule['v'].copy()
+    # Xd和Xi都有的元素集合去掉Yd有的
     in_k_v_but_not_in_decla_seq = set(rule['k']).intersection(set(rule['v'])) - set(decla_seq)
+    # Yi中去掉Yd没有但是在Xd和Xi都有的
     new_seq = [s for s in new_seq if s not in in_k_v_but_not_in_decla_seq]
+    # Yd 去掉 Xi
     in_decla_but_not_in_rule_v = set(decla_seq) - set(rule['v'])
+    # Xd 去掉 Xi
     in_rule_k_but_not_in_rule_v = set(rule['k']) - set(rule['v'])
+    # append_list 是将要加入到Yi的
     append_list = list(in_decla_but_not_in_rule_v - in_rule_k_but_not_in_rule_v)
+    # 待生成问题的答案
     in_rule_k_but_not_in_rule_v = list(in_rule_k_but_not_in_rule_v)
     if 1 != len(in_rule_k_but_not_in_rule_v):
         print('########## answer tag more than 1 ##########')
-    
+        print(decla_seq)
+        print(rule['k'])
+        print(rule['v'])
+        print('########## answer tag more than 1 ##########')
+    if 0 == len(in_rule_k_but_not_in_rule_v):
+        print('########## answer tag is 0 ##########')
+        print(decla_seq)
+        print(rule['k'])
+        print(rule['v'])
+        print('########## answer tag is 0 ##########')
+
     # Re-sort append_list
     order = [decla_seq.index(tag) for tag in append_list]
     tmp_append_list = sorted(zip(order, append_list))
@@ -384,6 +438,17 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
                     new_seq.pop(index)
                     new_seq.insert(index, tag)
             continue
+        # Add a verb into new_seq, if no verb in there
+        if 'VB' == tagl[0][:2]:
+            new_seq_pos_vb = [t[:2] for t in new_seq]
+            new_seq_sr_v = [t.split(':')[2] for t in new_seq]
+            if 'VB' not in new_seq_pos_vb or 'V' not in new_seq_sr_v:
+                for seq in new_seq:
+                    if 'ARG0' == seq.split(':')[2] or 'ARG1' == seq.split(':')[2]:
+                        index = new_seq.index(seq) + 1
+                        new_seq.insert(index, tag)
+                        break
+
         # VBP and VBZ can not in question seq togehter
         if tagl[0] in ['VBZ', 'VBP']:
             for seq in new_seq:
@@ -452,6 +517,16 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
     decla_sr_tag = [tag['SR'] for tag in decla_tags]
     decla_pos_tag = [tag['POS'] for tag in decla_tags]
     # print(decla_seq)
+
+    if len(answer_tags) == 0:
+        print('####################')
+        print('No answer tag')
+        print([tag['W'] for tag in decla_tags])
+        print(decla_seq)
+        print(interro_seq)
+        print('####################')
+        return []
+
     for tag in interro_seq:
         # print(tag)
         tagl = tag.split(':')
@@ -471,11 +546,18 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                     verb_list.append((decla_tags[index]['W'], tag))
                 continue
             else:
+                print('####################')
+                print('处理不存在的tag')
+                print(tag)
+                print([tag['W'] for tag in decla_tags])
+                print(decla_seq)
+                print(interro_seq)
+                print('####################')
                 # IN::NEW, VB::NEW, NN::ARG2NEW
                 # If current is VB, and next tag is V, then current tag is be
                 if tagl[0][:2] == 'VB':
                     next_index = interro_seq.index(tag) + 1
-                    if 'V' in interro_seq[next_index].split(':')[2]:
+                    if len(interro_seq) > next_index and 'V' in interro_seq[next_index].split(':')[2]:
                         question.append('be')
                         verb_list.append(('be', tag))
                     else:
@@ -492,10 +574,12 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                     # Get prep in ARG
                     arg_word = ''
                     arg_tag = ''
+                    # Check which ARG(ARG0 or ARG1) tag contained in answer tag
                     for answer_tag in answer_tags:
                         if 'ARG' in answer_tag:
                             arg_tag = answer_tag.split(':')[2]
                             break
+                    # Get the word corresponding to the answer tag
                     for decla_tag in decla_tags:
                         if decla_tag['SR'] == arg_tag:
                             arg_word = decla_tag['W']
@@ -550,6 +634,15 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
             print(is_replace_verb)
             print('is_reverse_verb:')
             print(is_reverse_verb)
+
+        print('####################')
+        print('处理动词')
+        print('is_replace_verb: ')
+        print(is_replace_verb)
+        print('is_reverse_verb:')
+        print(is_reverse_verb)
+        print('Before')
+        print(' '.join(question))
         
         if is_replace_verb:
             for i, v in enumerate(verb_list):
@@ -591,6 +684,10 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                     question[i] = verb0
                 if q == verb_list[1][0]:
                     question[i] = verb1
+
+        print('After')
+        print(' '.join(question))
+        print('####################')
 
     return ' '.join(question) + '?'
 

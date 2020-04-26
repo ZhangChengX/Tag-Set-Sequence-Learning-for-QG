@@ -19,12 +19,21 @@ def train_file(filename):
                 continue
             i = i + 1
             pair = line.split('|')
+            print(line)
             decla_tags_list = helper.preprocess(pair[0])
             for decla_tags in decla_tags_list:
                 interro_tags_list = helper.preprocess(pair[1])
                 if len(interro_tags_list) > 1:
-                    print('Length of interro_tags_list > 1')
+                    print('### Length of interro_tags_list > 1 ###')
                     interro_tags = interro_tags_list[-1]
+                    print(pair[0])
+                    print(decla_tags_list)
+                    print(pair[1])
+                    print(interro_tags_list)
+                elif len(interro_tags_list) == 1:
+                    interro_tags = interro_tags_list[0]
+                else:
+                    continue
                 declarative_list.append(decla_tags)
                 new_interro_tags = helper.get_new_interro_tags_by_decla_interro_tags(decla_tags, interro_tags)
                 interrogative_list.append(new_interro_tags)
@@ -37,6 +46,7 @@ def train_file(filename):
     print('Generating data file.')
     with open(config.rules_path + filename + '.rules', 'w') as file:
         json.dump(rules, file)
+        print('Don\'t forget to rename file. Wh.txt.rules to Wh.rules')
     print('Generating analysis file.')
     with open(config.rules_path + filename + '.analysis.txt', 'w') as file:
         i = 0
@@ -47,6 +57,10 @@ def train_file(filename):
             file.write(' '.join([tag['W'] for tag in declarative_list[i]]))
             file.write('\n')
             file.write(' '.join([tag['W'] for tag in interrogative_list[i]]))
+            file.write('\n')
+            file.write([tag['W'] for tag in declarative_list[i]])
+            file.write('\n')
+            file.write([tag['W'] for tag in interrogative_list[i]])
             file.write('\n')
             file.write(' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in declarative_list[i]]))
             file.write('\n')
@@ -68,11 +82,18 @@ def train_pair(ques_word, declarative, interrogative):
         for decla_tags in decla_tags_list:
             interro_tags_list = helper.preprocess(interrogative)
             if len(interro_tags_list) > 1:
-                print('Length of interro_tags_list > 1')
+                print('### Length of interro_tags_list > 1 ###')
                 interro_tags = interro_tags_list[-1]
+                print(pair[0])
+                print(decla_tags_list)
+                print(pair[1])
+                print(interro_tags_list)
+            else:
+                interro_tags = interro_tags_list[0]
             new_interro_tags = helper.get_new_interro_tags_by_decla_interro_tags(decla_tags, interro_tags)
             rule = {' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags]): \
                     ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in new_interro_tags])}
+            print(rule)
             rules.update(rule)
     with open(filename, 'w') as file:
         json.dump(rules, file)
@@ -80,15 +101,51 @@ def train_pair(ques_word, declarative, interrogative):
     with open(incremental_file, 'a') as file:
         file.write(declarative + ' | ' + interrogative + '\n')
 
+def train_pair_test(ques_word, declarative, interrogative):
+    # filename = config.rules_path + ques_word + '.rules'
+    # rules = None
+    # with open(filename) as file:
+        # rules = json.load(file)
+        decla_tags_list = helper.preprocess(declarative)
+        for decla_tags in decla_tags_list:
+            interro_tags_list = helper.preprocess(interrogative)
+            if len(interro_tags_list) > 1:
+                print('### Length of interro_tags_list > 1 ###')
+                interro_tags = interro_tags_list[-1]
+                print(pair[0])
+                print(decla_tags_list)
+                print(pair[1])
+                print(interro_tags_list)
+            else:
+                interro_tags = interro_tags_list[0]
+            new_interro_tags = helper.get_new_interro_tags_by_decla_interro_tags(decla_tags, interro_tags)
+            rule = {' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags]): \
+                    ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in new_interro_tags])}
+            print(rule)
+    #         rules.update(rule)
+    # with open(filename, 'w') as file:
+    #     json.dump(rules, file)
+    # incremental_file = config.rules_path + ques_word + '.incremental.txt'
+    # with open(incremental_file, 'a') as file:
+    #     file.write(declarative + ' | ' + interrogative + '\n')
+
 if __name__ == "__main__":
     argv = sys.argv
     arguments = ' '.join(argv[1:])
     if '|' in arguments:
         pair = arguments.split('|')
-        train_pair(pair[1].split()[0].capitalize(), pair[0], pair[1])
+        # train_pair(pair[1].split()[0].capitalize(), pair[0], pair[1])
+        train_pair_test(pair[1].split()[0].capitalize(), pair[0], pair[1])
     elif '.txt' in arguments:
         train_file(arguments)
+    elif 'all' in arguments:
+        train_file('What.txt')
+        train_file('When.txt')
+        train_file('Where.txt')
+        train_file('Who.txt')
+        train_file('Whose.txt')
     else:
         print('Usage:')
+        print('python train.py all')
         print('python train.py filename.txt')
         print('python train.py "Declarative sentence. | Interrogative question?"')

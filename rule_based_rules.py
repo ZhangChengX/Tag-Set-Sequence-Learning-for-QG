@@ -7,6 +7,8 @@ import config
 
 def who(labels, ne_tags, pos_tags):
     # Example: arg1 is arg2, arg2 is arg1, arg0 do argx
+    if 'V' not in labels:
+        return
     question = 'Who'
     subject_key = ''
     subject = helper.get_phrase_by_consecutive_tags('PER', ne_tags)
