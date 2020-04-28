@@ -57,6 +57,7 @@ class QuestionGeneration:
         word_list = sentence.split(' ')
         if len(word_list) < 3: return []
         if sentence[-1:] == '?': return []
+        if sentence[-2:] == '?.': return []
         if word_list[0].lower() in ['who', 'whose', 'what', 'where', 'when', 'which', 'why', 'how']:
             return []
         if word_list[0].lower() in ['and', 'but', 'for', 'or', 'plus', 'so', 'therefore']:
@@ -207,6 +208,7 @@ class QuestionGeneration:
             if config.debug:
                 print('### Pre-processing ###')
                 print(sentence)
+                print('Sub Sentence: ' + str(' '.join([t[1] for t in sr_tags])))
                 print('pos_tags = ' + str(pos_tags))
                 print('ne_tags = ' + str(ne_tags))
                 print('sr_tags = ' + str(sr_tags))
