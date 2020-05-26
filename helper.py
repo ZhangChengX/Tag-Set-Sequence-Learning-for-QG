@@ -4,16 +4,16 @@ import os
 import json
 import requests
 import config
-from nltk.data import load
 from nltk.metrics.distance import edit_distance
 
 
-def segment_by_sentence(text):
-    tokenizer = load('tokenizers/punkt/{0}.pickle'.format('english'))
+def segment_by_sentence(text, tokenizer):
+    # from nltk.tokenize import sent_tokenize
+    # sentence_list = sent_tokenize(text)
     sentences = []
-    paragraphs = [p for p in text.split('\n') if p]
-    for paragraph in paragraphs:
-        sentences.extend(tokenizer.tokenize(paragraph))
+    sentence_list = tokenizer.tokenize(text)
+    for sent in sentence_list:
+        sentences.extend([s for s in sent.split('\n') if s])
     return sentences
 
 def preprocess(sentence):
@@ -22,6 +22,10 @@ def preprocess(sentence):
 
 def pipeline(sentence):
     r = requests.get(url = 'http://localhost:' + str(config.port) + '/pipeline?sentence=' + sentence)
+    return r.json()
+
+def loadrules():
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/loadrules')
     return r.json()
 
 def load_rules(path):
@@ -74,22 +78,17 @@ def get_new_interro_tags_by_decla_interro_tags(decla_tags:list, interro_tags:lis
     return new_interro_tags
 
 def preprocess_sr_tags(sr_tags_list:list, pos_tags:list):
-
-    # TODO bug need to be fixed:
-
-    # Tom is able to be driven to Boston by John.
-
-    # sr_tags_list before preprocess:
-
-    # sr_tags_list = [{'ARG1': 'Tom', 'V': 'is', 'ARG2': 'able to be driven to Boston by John'}, {'V': 'be'}, {'ARG1': 'Tom', 'V': 'driven', 'ARG2': 'to Boston', 'ARG0': 'by John'}]
-
-    # sr_tags_list after preprocess: 错误
-
-    # sr_tags_list = [[('ARG1', 'Tom'), ('ARG1', 'Tom'), ('V', 'is'), ('ARG2', 'able to be driven to Boston by John'), ('ARG2', 'to Boston'), ('V', 'be'), ('V', 'driven'), ('ARG0', 'by John'), ('.', '.')]]
-
-
-
     rst = []
+
+    if len(sr_tags_list) < 2:
+        sr_dict = sr_tags_list[0]
+        # Re-format
+        sr_tags = []
+        for k, v in sr_dict.items():
+            sr_tags.append((k, v))
+        rst.append(sr_tags)
+        return rst
+
     # Check if there is any short tag list contain V need to be merged in
     to_be_merge_list = []
     verb_phrase = ''
@@ -124,6 +123,8 @@ def preprocess_sr_tags(sr_tags_list:list, pos_tags:list):
         elif tmp_phrase2 in sentence:
             sr_dict['V'] = tmp_phrase2
 
+        sr_dict['V'] = sr_dict['V'].strip()
+
         # Re-format
         sr_tags = []
         for k, v in sr_dict.items():
@@ -155,11 +156,7 @@ def preprocess_sr_tags(sr_tags_list:list, pos_tags:list):
 
     # return rst
 
-# [
-# {'V': 'is'}, 
-# {'ARGM-NEG': 'not', 'V': 'going'}, 
-# {'ARG0': 'Tom', 'V': 'play', 'ARG1': 'video game'}
-# ]
+
 def merge_sr_tags(sr_tags_list:list, pos_tags:list):
     sr_tags = []
     sr_word_list = []
@@ -199,12 +196,62 @@ def merge_sr_tags(sr_tags_list:list, pos_tags:list):
     return [sorted(sr_tags, key = lambda i: order[sr_tags.index(i)])]
 
 def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
+    word_amount_pos_tags = len(pos_tags)
+    word_amount_sr_tags = len(' '.join([t[1] for t in sr_tags]).split(' '))
+    vb_amount = 0
+    nn_amount = 0
+    for t in pos_tags:
+        if 'VB' == t[1][:2]:
+            vb_amount = vb_amount + 1
+        if 'NN' == t[1][:2]:
+            nn_amount = nn_amount + 1
+    if vb_amount >= 3 and nn_amount >= 3 and (word_amount_pos_tags - word_amount_sr_tags) >= 3:
+        return merge_tags_sr_based(pos_tags, ne_tags, sr_tags)
+    else:
+        return merge_tags_pos_based(pos_tags, ne_tags, sr_tags)
+    
+def merge_tags_sr_based(pos_tags:list, ne_tags:list, sr_tags:list):
+    # How many sr tags, how many merged tags
+    tags_list = []
+    word_list = [tag[0] for tag in pos_tags]
+    for sr_tag in sr_tags: 
+        sr_tag_word_list = sr_tag[1].split(' ')
+        tmp = {}
+        phrase_ne_tag_list = []
+        for w in sr_tag_word_list:
+            if w in word_list:
+                index = word_list.index(w)
+                pos_tag = pos_tags[index][1]
+                sr_t = sr_tag[0]
+                ne_tag = ne_tags[index][0]
+                ne_tag = '' if 'O' == ne_tag else ne_tag
+                ne_tag = 'PER' if 'PER' == ne_tag[-3:] else ne_tag
+                ne_tag = 'LOC' if 'LOC' == ne_tag[-3:] else ne_tag
+                ne_tag = 'ORG' if 'ORG' == ne_tag[-3:] else ne_tag
+                phrase_ne_tag_list.append(ne_tag)
+                # multi-words push into one SR tag, so only keep useful NE tag
+                if 'LOC' in phrase_ne_tag_list:
+                    ne_tag = 'LOC'
+                if 'PER' in phrase_ne_tag_list:
+                    ne_tag = 'PER'
+                if 'ORG' in phrase_ne_tag_list:
+                    ne_tag = 'ORG'
+                tmp = {'POS': pos_tag, 'NE': ne_tag, 'SR': sr_t, 'W': sr_tag[1]}
+        tags_list.append(tmp)
+    # remove the first element if it is ArgM
+    if 'ARGM-' == tags_list[0]['SR'][:5]:
+        tags_list.pop(0)
+    return tags_list
+
+def merge_tags_pos_based(pos_tags:list, ne_tags:list, sr_tags:list):
+    # How many pos tags, how many merged tags
     tags_list = []
     last_value = ''
     current_value = ''
     is_in_sr_tag = False
     is_eq_sr_tag = False
     phrase_ne_tag_list = []
+    sr_tags_words = [t[1] for t in sr_tags]
     i = 0
     for i in range(len(pos_tags)):
         if pos_tags[i][1] == '.':
@@ -223,8 +270,16 @@ def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
         ne_tag = '' if 'O' == ne_tags[i][0] else ne_tags[i][0]
         ne_tag = 'PER' if 'PER' == ne_tag[-3:] else ne_tag
         ne_tag = 'LOC' if 'LOC' == ne_tag[-3:] else ne_tag
-        # ne_tag = 'ORG' if 'ORG' == ne_tag[-3:] else ne_tag
+        ne_tag = 'ORG' if 'ORG' == ne_tag[-3:] else ne_tag
+        # print(pos_tags[i][0])
+        # print(is_in_sr_tag)
+        # print(is_eq_sr_tag)
+        # print('')
         if is_in_sr_tag:
+            # print(pos_tags[i][0])
+            # print(last_value)
+            # print(current_value)
+            # print('-----')
             # if current tag and previous tag are same SR tag, remove previous and add new one.
             if last_value == current_value:
                 tags_list.pop()
@@ -232,12 +287,20 @@ def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
                 phrase_ne_tag_list.append(ne_tag)
             # # Get key by value in dict
             # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
-            sr_tags_words = [t[1] for t in sr_tags]
             index = sr_tags_words.index(current_value)
-            # if ne_tag contains more than 1 other tags, change the ne_tag to empty.
-            if phrase_ne_tag_list.count('') > 1:
-                ne_tag = ''
+            # if ne_tag contains more than 1 other tags.
+            if len(phrase_ne_tag_list) > 1:
+                # multi-words push into one SR tag, so only keep useful NE tag
+                if 'LOC' in phrase_ne_tag_list:
+                    ne_tag = 'LOC'
+                if 'PER' in phrase_ne_tag_list:
+                    ne_tag = 'PER'
+                if 'ORG' in phrase_ne_tag_list:
+                    ne_tag = 'ORG'
+            # if phrase_ne_tag_list.count('') > 1:
+            #     ne_tag = ''
             tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
+            # print(tmp)
             tags_list.append(tmp)
             last_value = current_value
         elif is_eq_sr_tag:
@@ -245,22 +308,29 @@ def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
             phrase_ne_tag_list = []
             # # Get key by value in dict
             # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
-            sr_tags_words = [t[1] for t in sr_tags]
             index = sr_tags_words.index(current_value)
             tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
+            # print(tmp)
             tags_list.append(tmp)
         else:
             # Empty the list if the word is not in a phase
             phrase_ne_tag_list = []
 
-            if pos_tags[i][0] == 'not':
-                tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': 'ARGM-NEG', 'W': pos_tags[i][0]}
+            if pos_tags[i][0] in sr_tags_words:
+                index = sr_tags_words.index(pos_tags[i][0])
+                sr_t = sr_tags[index][0]
+            elif pos_tags[i][0] == 'not':
+                sr_t = 'ARGM-NEG'
             else:
-                tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': '', 'W': pos_tags[i][0]}
+                sr_t = ''
+            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_t, 'W': pos_tags[i][0]}
+            # print(tmp)
+            # print(pos_tags[i][0])
             tags_list.append(tmp)
         is_in_sr_tag = False
         is_eq_sr_tag = False
         i = i + 1
+
     return make_tags_unique(tags_list)
 
 def make_tags_unique(tags):
@@ -274,6 +344,23 @@ def make_tags_unique(tags):
             seen.append(joint_tag)
         i = i + 1
     return tags
+
+def adjust_order(new_seq, based_seq):
+    rst_seq = []
+    for b_tag in based_seq:
+        tmp_is_match = False
+        for n_tag in new_seq:
+            if is_tag_match(b_tag, n_tag):
+                rst_seq.append(n_tag)
+                new_seq.remove(n_tag)
+                tmp_is_match = True
+                break
+        if not tmp_is_match:
+            if len(new_seq) > 0:
+                rst_seq.append(new_seq[0])
+                new_seq.pop()
+    return rst_seq
+        
 
 def find_lcs(x:list, y:list, m:int, n:int): 
     # https://www.geeksforgeeks.org/longest-common-substring-dp-29/
@@ -311,20 +398,29 @@ def is_tag_match(tag1, tag2):
     if tag1 == tag2:
         return True
     # NN == NNS
-    elif 'NN' in tag1 and 'NN' in tag2:
-        t1 = tag1.replace('NNS', 'NN')
-        t2 = tag2.replace('NNS', 'NN')
-        t3 = tag1.replace('NNP', 'NN')
-        t4 = tag2.replace('NNP', 'NN')
-        if t1 == t2 or t3 == t4:
+    elif 'NN' in tag1 and 'NN' in tag2 and 'ARGM' not in tag1 and 'ARGM' not in tag2:
+        is_both_arg = False
+        if 'ARG0' in tag1 and 'ARG0' in tag2:
+            is_both_arg = True
+        elif 'ARG1' in tag1 and 'ARG1' in tag2:
+            is_both_arg = True
+        elif 'ARG2' in tag1 and 'ARG2' in tag2:
+            is_both_arg = True
+        elif 'ARG3' in tag1 and 'ARG3' in tag2:
+            is_both_arg = True
+        elif 'ARG4' in tag1 and 'ARG4' in tag2:
+            is_both_arg = True
+        elif 'ARG5' in tag1 and 'ARG5' in tag2:
+            is_both_arg = True
+        noun_list = ['NN', 'NNP', 'NNS', 'NNPS']
+        if is_both_arg and tag1.split(':')[0] in noun_list and tag2.split(':')[0] in noun_list:
             return True
         else:
             return False
     # VBP == VBZ
-    elif 'VBP' in tag1 or 'VBP' in tag2:
-        t1 = tag1.replace('VBP', 'VBZ')
-        t2 = tag2.replace('VBP', 'VBZ')
-        if t1 == t2:
+    elif 'VB' in tag1 or 'VB' in tag2:
+        verb_list = ['VBP', 'VBZ']
+        if tag1.split(':')[0] in verb_list and tag2.split(':')[0] in verb_list:
             return True
         else:
             return False
@@ -336,6 +432,9 @@ def is_tag_match(tag1, tag2):
         return True
     # PER:ARG1
     elif 'PER:ARG1' in tag1 and 'PER:ARG1' in tag2:
+        return True
+    # PER:ARG2
+    elif 'PER:ARG2' in tag1 and 'PER:ARG2' in tag2:
         return True
     # ARG0, ARG1, ARG2
     elif 'PER:ARG' in tag1 and 'PER:ARG' in tag2 and edit_distance(tag1, tag2) == 1:
@@ -358,7 +457,7 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
 
     # 先把Xi 复制到Yi
     # Yi中去掉Yd没有但是在Xd和Xi都有的 G
-    # 得到Yd有，Xi(或Y2)没有的 B D E
+    # 得到Yd有，Xi没有的 B D E
     # 找到Xd有，Xi没有的 B
     # BDE 中去掉 B， 加入到Yi中
     # Xd有，Xi没有的元素一般是待生成问题的答案
@@ -377,18 +476,20 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
     append_list = list(in_decla_but_not_in_rule_v - in_rule_k_but_not_in_rule_v)
     # 待生成问题的答案
     in_rule_k_but_not_in_rule_v = list(in_rule_k_but_not_in_rule_v)
-    if 1 != len(in_rule_k_but_not_in_rule_v):
+    if 1 < len(in_rule_k_but_not_in_rule_v):
         print('########## answer tag more than 1 ##########')
         print(decla_seq)
         print(rule['k'])
         print(rule['v'])
         print('########## answer tag more than 1 ##########')
+        print('')
     if 0 == len(in_rule_k_but_not_in_rule_v):
         print('########## answer tag is 0 ##########')
         print(decla_seq)
         print(rule['k'])
         print(rule['v'])
         print('########## answer tag is 0 ##########')
+        print('')
 
     # Re-sort append_list
     order = [decla_seq.index(tag) for tag in append_list]
@@ -431,12 +532,14 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
                     index = new_seq.index(new_seq[neg_index])
                 new_seq.insert(index + 1, tag)
             else:
-                # If there is V tag in both append_list and new_seq, replace the V in new_seq with the V in append_list
+                # If the V tag of append_list in new_seq, replace the V in new_seq with the V in append_list. otherwise append the V to new_seq
                 sr_rule_v = [t.split(':')[2] for t in new_seq]
                 if tagl[2] in sr_rule_v:
                     index = sr_rule_v.index(tagl[2])
                     new_seq.pop(index)
                     new_seq.insert(index, tag)
+                else:
+                    new_seq.append(tag)
             continue
         # Add a verb into new_seq, if no verb in there
         if 'VB' == tagl[0][:2]:
@@ -459,6 +562,16 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
                     # print(new_seq)
                     break
             continue
+        # Append ARG to new_seq if ARG not in new_seq and not in Answer_tags
+        if 'ARG' == tagl[2][:3] and 'ARGM' != tagl[2]:
+            arg_new_seq = [s.split(':')[2] for s in new_seq if s.split(':')[0][:1] != 'W']
+            arg_answer_seq = [s.split(':')[2] for s in in_rule_k_but_not_in_rule_v]
+            # print(arg_new_seq)
+            # print(arg_answer_seq)
+            if tagl[2] not in arg_new_seq and tagl[2] not in arg_answer_seq:
+                new_seq.append(tag)
+            continue
+
         # Append NNP:LOC:ARG to new_seq if it in rule_v
         if 'LOC' == tagl[1] and 'WRB' == wh_tag:
             is_append = False
@@ -485,10 +598,14 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
             vb_new_seq = [t[:2] for t in new_seq]
             if 'MD' in vb_new_seq:
                 index = vb_new_seq.index('MD')
-            else:
+            elif 'VB' in vb_new_seq:
                 index = vb_new_seq.index('VB')
+            else:
+                # there is no VB in the new_seq, append VB and set index to the last one
+                new_seq.append('VB::')
+                index = len(new_seq) - 1
             # If more than one verb, and ARG is behind verb, put NEG behind the ARG
-            # Apply to Where question
+            # Apply to Where Why How questions
             if 'WRB' == wh_tag:
                 srl_new_seq = [t.split(':')[2][:3] for t in new_seq]
                 if len(srl_new_seq) > index + 1 and 'ARG' == srl_new_seq[index + 1]:
@@ -502,9 +619,11 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
             new_seq.insert(1, tag)
             continue
         new_seq.append(tag)
+    # Ajdust order of new_seq according to rule['v']
+    new_seq = adjust_order(new_seq, rule['v'])
     # Ajdust order, move ARGM-TMP to the end
     for seq in new_seq.copy():
-        if 'ARGM-TMP' in seq:
+        if 'ARGM-TMP' in seq and 'WRB' not in seq:
             tmp_seq = seq
             new_seq.remove(tmp_seq)
             new_seq.append(tmp_seq)
@@ -518,15 +637,6 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
     decla_pos_tag = [tag['POS'] for tag in decla_tags]
     # print(decla_seq)
 
-    if len(answer_tags) == 0:
-        print('####################')
-        print('No answer tag')
-        print([tag['W'] for tag in decla_tags])
-        print(decla_seq)
-        print(interro_seq)
-        print('####################')
-        return []
-
     for tag in interro_seq:
         # print(tag)
         tagl = tag.split(':')
@@ -534,7 +644,7 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
             index = decla_seq.index(tag)
             question.append(decla_tags[index]['W'])
             if tagl[0][:2] == 'VB':
-                    verb_list.append((decla_tags[index]['W'], tag))
+                verb_list.append((decla_tags[index]['W'], tag))
         else:
             if tagl[0] in ['WDT', 'WP', 'WP$', 'WRB']:
                 question.insert(0, ques_word)
@@ -553,6 +663,7 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                 print(decla_seq)
                 print(interro_seq)
                 print('####################')
+                print('')
                 # IN::NEW, VB::NEW, NN::ARG2NEW
                 # If current is VB, and next tag is V, then current tag is be
                 if tagl[0][:2] == 'VB':
@@ -590,10 +701,17 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                             question.append(tmp_words[1])
                         else:
                             # In most case, prep is first word
-                            question.append(tmp_words[0])
-                    else:
-                        # TODO
-                        question.append(tag)
+                            # check the first word is prep
+                            tmp_word = ''
+                            for t in decla_tags:
+                                if tmp_words[0] == t['W']:
+                                    if 'IN' == t['POS']:
+                                        question.append(tmp_words[0])
+                                        break
+                    # if ARG is a phrase, then ignore the IN, no need append tag
+                    # else:
+                    #     # TODO
+                    #     question.append(tag)
                 elif 'ARG' in tagl[2]:
                     if tagl[2] in decla_sr_tag:
                         index = decla_sr_tag.index(tagl[2])
@@ -606,88 +724,114 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                     question.append(tag)
 
     # Check verb tense
-    # Apply to Where question
-    if 'WRB' == interro_seq[0].split(':')[0]:
-        # 1. verb_list 不少于一个, 2. 句子不是 be about to 和 be able to 结构, 3. verb_list 中没有进行时(VBG), 4. verb_list中第一个verb是['is', 'are', 'do', 'does'], 5. 不是will/can do(MD)结构, 6. 不是has have been(VBN)结构, 7. 不是否定句(NEG)
-        # 满足1.2.3.4.条件时, 尝试修正verb的时态
-        # 满足1.2.3.5.6.7.条件时 并且verb_list中第一个verb是['VBD', 'VBZ']，才需要颠倒两个verb的顺序
-        is_verb_flag = False
-        is_replace_verb = False
-        is_reverse_verb = False
-        new_verb_list = []
+    # # Apply to Where question
+    # if 'WRB' == interro_seq[0].split(':')[0]:
+    # 1. verb_list 不少于一个, 2. 句子不是 be about to 和 be able to 结构, 3. verb_list 中没有进行时(VBG), 4. verb_list中第一个verb是['is', 'are', 'do', 'does'], 5. 不是will/can do(MD)结构, 6. 不是has have been(VBN)结构, 7. 不是否定句(NEG)
+    # 满足1.2.3.4.条件时, 尝试修正verb的时态
+    # 满足1.2.3.5.6.7.条件时 并且verb_list中第一个verb是['VBD', 'VBZ']，才需要颠倒两个verb的顺序
+    is_verb_flag = True
+    is_replace_verb = False
+    is_replace_first_verb = False
+    is_reverse_verb = False
+    new_verb_list = []
 
-        if len(verb_list) > 1:
-            tmp_ques = ' '.join(question)
-            verb_pos_list = [v[1].split(':')[0] for v in verb_list]
-            if 'VBG' in verb_pos_list or \
-                'about to' in tmp_ques or 'able to' in tmp_ques:
-                is_verb_flag = True
-            if not is_verb_flag and verb_list[0][0] in ['is', 'are', 'do', 'does']:
-                is_replace_verb = True
-            if not is_verb_flag and 'VBN' not in verb_pos_list and \
-                'MD' not in verb_pos_list and verb_list[0][1][:3] in ['VBD', 'VBZ'] and \
-                    'not' not in question:
-                is_reverse_verb = True
-        
-        if config.debug:
-            print('is_replace_verb: ')
-            print(is_replace_verb)
-            print('is_reverse_verb:')
-            print(is_reverse_verb)
-
+    if len(verb_list) > 1:
+        tmp_ques = ' '.join(question)
+        verb_pos_list = [v[1].split(':')[0] for v in verb_list]
+        # 如果是进行时就不进行verb操作
+        if 'VBG' in verb_pos_list or \
+            'about to' in tmp_ques or 'able to' in tmp_ques:
+            is_verb_flag = False
+        # 如果第一个verb属于is are do does中的任意一个，则执行替换操作
+        if is_verb_flag and verb_list[0][0] in ['is', 'are', 'do', 'does']:
+            is_replace_verb = True
+        # 如果两个verb相等，则执行替换第一个verb操作
+        if is_verb_flag and verb_list[0][0] == verb_list[1][0]:
+            is_replace_first_verb = True
+        # 没有过去分词并且没有情态动词，并且第一个verb属于vbd，vbz，且不是否定句，则互换2个verb位置
+        if is_verb_flag and 'VBN' not in verb_pos_list and \
+            'MD' not in verb_pos_list and verb_list[0][1][:3] in ['VBD', 'VBZ'] and \
+                'not' not in question:
+            is_reverse_verb = True
+    
+    if config.debug:
         print('####################')
         print('处理动词')
+        print('verb_list: ')
+        print(verb_list)
         print('is_replace_verb: ')
         print(is_replace_verb)
-        print('is_reverse_verb:')
+        print('is_replace_first_verb: ')
+        print(is_replace_first_verb)
+        print('is_reverse_verb: ')
         print(is_reverse_verb)
-        print('Before')
+        print('Before: ')
         print(' '.join(question))
-        
-        if is_replace_verb:
-            for i, v in enumerate(verb_list):
-                if 'VBD' == v[1][:3]:
-                    new_verb_list.append(['did', v[1]])
-                elif 'VBP' == v[1][:3]:
-                    new_verb_list.append(['do', v[1]])
-                elif 'VBZ' == v[1][:3]:
-                    new_verb_list.append(['does', v[1]])
-                else:
-                    new_verb_list.append([v[0], v[1]])
-            for i, q in enumerate(question):
-                for j, v in enumerate(verb_list):
-                    if q == v[0]:
-                        question[i] = new_verb_list[j][0]
-        
-        # print('new_verb_list:')
-        # print(new_verb_list)
-
-        # Reverse the order of 2 verbs.
-        if is_reverse_verb:
-            verb1 = wordnet.get_base_verb(verb_list[0][0])
-            if 'VBD' == verb_list[0][1][:3]:
-                verb0 = 'did'
-            elif 'VBG' == verb_list[0][1][:3]:
-                verb0 = 'UNKNOWN'
-            elif 'VBN' == verb_list[0][1][:3]:
-                verb0 = 'UNKNOWN'
-            elif 'VBP' == verb_list[0][1][:3]:
-                verb0 = 'do'
-            elif 'VBZ' == verb_list[0][1][:3]:
-                verb0 = 'does'
-            elif 'VB:' == verb_list[0][1][:3]:
-                verb0 = 'UNKNOWN'
+        print('')
+    
+    if is_replace_verb:
+        for i, v in enumerate(verb_list):
+            if 'VBD' == v[1][:3]:
+                new_verb_list.append(('did', v[1]))
+            elif 'VBP' == v[1][:3]:
+                new_verb_list.append(('do', v[1]))
+            elif 'VBZ' == v[1][:3]:
+                new_verb_list.append(('does', v[1]))
             else:
-                verb0 = 'UNKNOWN'
-            for i, q in enumerate(question):
-                if q == verb_list[0][0]:
-                    question[i] = verb0
-                if q == verb_list[1][0]:
-                    question[i] = verb1
+                new_verb_list.append((v[0], v[1]))
+        for i, q in enumerate(question):
+            for j, v in enumerate(verb_list):
+                if q == v[0]:
+                    question[i] = new_verb_list[j][0]
+                    break
 
-        print('After')
+    if is_replace_first_verb:
+        tmp_v = ''
+        if 'VBD' == verb_list[0][1][:3]:
+            tmp_v = 'did'
+        elif 'VBP' == verb_list[0][1][:3]:
+            tmp_v = 'do'
+        elif 'VBZ' == verb_list[0][1][:3]:
+            tmp_v = 'does'
+        else:
+            tmp_v = verb_list[0][0]
+
+        for i, q in enumerate(question):
+            if q == verb_list[0][0]:
+                question[i] = tmp_v
+                break
+
+    # print('new_verb_list:')
+    # print(new_verb_list)
+
+    # Reverse the order of 2 verbs.
+    if is_reverse_verb:
+        verb1 = wordnet.get_base_verb(verb_list[0][0])
+        if 'VBD' == verb_list[0][1][:3]:
+            verb0 = 'did'
+        elif 'VBG' == verb_list[0][1][:3]:
+            verb0 = 'UNKNOWN'
+        elif 'VBN' == verb_list[0][1][:3]:
+            verb0 = 'UNKNOWN'
+        elif 'VBP' == verb_list[0][1][:3]:
+            verb0 = 'do'
+        elif 'VBZ' == verb_list[0][1][:3]:
+            verb0 = 'does'
+        elif 'VB:' == verb_list[0][1][:3]:
+            verb0 = 'UNKNOWN'
+        else:
+            verb0 = 'UNKNOWN'
+        for i, q in enumerate(question):
+            if q == verb_list[0][0]:
+                question[i] = verb0
+            if q == verb_list[1][0]:
+                question[i] = verb1
+
+    if config.debug:
+        print('After: ')
         print(' '.join(question))
         print('####################')
+        print('')
 
     return ' '.join(question) + '?'
 

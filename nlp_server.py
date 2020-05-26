@@ -36,5 +36,15 @@ def generate():
     data = qg.generate(text)
     return jsonify(data)
 
+@app.route('/loadrules')
+def loadrules():
+    print('Before:')
+    for k, v in qg.rules.items():
+        print('Rule ' + k + ': ' + str(len(v)))
+    print('After:')
+    data = qg.load_rules()
+    return jsonify(data)
+
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.port, debug=config.debug)
