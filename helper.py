@@ -563,7 +563,7 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
                     break
             continue
         # Append ARG to new_seq if ARG not in new_seq and not in Answer_tags
-        if 'ARG' == tagl[2][:3] and 'ARGM' != tagl[2]:
+        if 'ARG' == tagl[2][:3] and 'ARGM' != tagl[2][:4]:
             arg_new_seq = [s.split(':')[2] for s in new_seq if s.split(':')[0][:1] != 'W']
             arg_answer_seq = [s.split(':')[2] for s in in_rule_k_but_not_in_rule_v]
             # print(arg_new_seq)
@@ -712,7 +712,7 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                     # else:
                     #     # TODO
                     #     question.append(tag)
-                elif 'ARG' in tagl[2]:
+                elif 'ARG' in tagl[2] and 'ARGM' not in tagl[2]:
                     if tagl[2] in decla_sr_tag:
                         index = decla_sr_tag.index(tagl[2])
                         question.append(decla_tags[index]['W'])
@@ -720,8 +720,11 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                         # TODO
                         question.append(tag)
                 else:
+                    if config.debug:
+                        print('### Tag can not be found. ###')
+                        print(tag)
                     # TODO
-                    question.append(tag)
+                    # question.append(tag)
 
     # Check verb tense
     # # Apply to Where question

@@ -112,8 +112,10 @@ def train_pair_test(ques_word, declarative, interrogative):
     # with open(filename) as file:
         # rules = json.load(file)
         decla_tags_list = helper.preprocess(declarative)
+        # print(decla_tags_list)
         for decla_tags in decla_tags_list:
             interro_tags_list = helper.preprocess(interrogative)
+            # print(interro_tags_list)
             if len(interro_tags_list) > 1:
                 print('### Length of interro_tags_list > 1 ###')
                 interro_tags = interro_tags_list[-1]
@@ -145,8 +147,8 @@ if __name__ == "__main__":
     arguments = ' '.join(argv[1:])
     if '|' in arguments:
         pair = arguments.split('|')
-        train_pair(pair[1].split()[0].capitalize(), pair[0], pair[1])
-        # train_pair_test(pair[1].split()[0].capitalize(), pair[0], pair[1])
+        # train_pair(pair[1].split()[0].capitalize(), pair[0], pair[1])
+        train_pair_test(pair[1].split()[0].capitalize(), pair[0], pair[1])
     elif '.txt' in arguments:
         train_file(arguments)
     elif 'all' in arguments:
