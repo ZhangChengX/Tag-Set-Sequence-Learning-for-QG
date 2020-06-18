@@ -91,33 +91,33 @@ class QuestionGeneration:
         # Get merged tags list
         decla_tags_list = self.preprocess(sentence)
 
-        # Previous version, rules based QG
-        if config.rule_based:
-            for tags_list in decla_tags_list:
-                labels = {}
-                ne_tags = []
-                pos_tags = []
-                for tags in tags_list:
-                    if tags['SR']:
-                        labels[tags['SR']] = tags['W']
-                    ne_tags.append((tags['NE'], tags['W']))
-                    pos_tags.append((tags['W'], tags['POS']))
-                rbqg = rulebased.who(labels, ne_tags, pos_tags)
-                if rbqg:
-                    rbqg['Sentence'] = sentence
-                    question_list.append(rbqg)
-                rbqg = rulebased.why(labels, ne_tags)
-                if rbqg:
-                    rbqg['Sentence'] = sentence
-                    question_list.append(rbqg)
-            # Remove duplicates
-            ques_list = []
-            for tmp in question_list.copy():
-                if tmp['Question'] in ques_list:
-                    question_list.remove(tmp)
-                else:
-                    ques_list.append(tmp['Question'])
-        # Previous version, rules based QG
+        # # Previous version, rules based QG
+        # if config.rule_based:
+        #     for tags_list in decla_tags_list:
+        #         labels = {}
+        #         ne_tags = []
+        #         pos_tags = []
+        #         for tags in tags_list:
+        #             if tags['SR']:
+        #                 labels[tags['SR']] = tags['W']
+        #             ne_tags.append((tags['NE'], tags['W']))
+        #             pos_tags.append((tags['W'], tags['POS']))
+        #         rbqg = rulebased.who(labels, ne_tags, pos_tags)
+        #         if rbqg:
+        #             rbqg['Sentence'] = sentence
+        #             question_list.append(rbqg)
+        #         rbqg = rulebased.why(labels, ne_tags)
+        #         if rbqg:
+        #             rbqg['Sentence'] = sentence
+        #             question_list.append(rbqg)
+        #     # Remove duplicates
+        #     ques_list = []
+        #     for tmp in question_list.copy():
+        #         if tmp['Question'] in ques_list:
+        #             question_list.remove(tmp)
+        #         else:
+        #             ques_list.append(tmp['Question'])
+        # # Previous version, rules based QG
 
         for decla_tags in decla_tags_list:
 
@@ -143,6 +143,8 @@ class QuestionGeneration:
                     lcs = helper.find_lcs(decla_seq, k.split(), len(decla_seq), len(k.split()))
                     # if len(decla_seq) / 3 > lcs:
                     #     continue
+                    if lcs < 3:
+                        continue
                     if len(k.split()) - lcs > config.matching_fuzzy:
                         continue
                     if lcs > max_lcs:
@@ -200,7 +202,7 @@ class QuestionGeneration:
                     # If multi answer tags, choose ARG/LOC/PER as the only one, otherwise select NN.
                     if len(answer_tags) > 1:
                         for t in answer_tags.copy():
-                            if 'ARG0' in t or 'ARG1' in t or 'ARG2' in t or 'LOC' in t or 'PER' in t:
+                            if 'ARG0' in t or 'ARG1' in t or 'ARG2' in t or 'LOC' in t or 'PER' in t or 'TMP' in t:
                                 answer_tags = [t]
                                 break
                         if len(answer_tags) > 1:
@@ -208,6 +210,10 @@ class QuestionGeneration:
                                 if 'NN' in t:
                                     answer_tags = [t]
                                     break
+                        if config.debug:
+                            print('New Answer_tags:')
+                            print(answer_tags)
+                            print('')
 
                     if len(answer_tags) != 1:
                         print('####################')
@@ -227,10 +233,16 @@ class QuestionGeneration:
                             print(question)
                         else:
                             print('Empty. No question generated.')
+                        print('')
         
                     if not question:
                         continue
                     
+                    if config.debug:
+                        print('### generate_answer ###')
+                        print(answer_tags)
+                        print('')
+
                     if 1 == len(answer_tags):
                         if answer_tags[0] in decla_seq:
                             answer = decla_tags[decla_seq.index(answer_tags[0])]['W']

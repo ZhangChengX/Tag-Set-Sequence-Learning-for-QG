@@ -16,18 +16,6 @@ def segment_by_sentence(text, tokenizer):
         sentences.extend([s for s in sent.split('\n') if s])
     return sentences
 
-def preprocess(sentence):
-    r = requests.get(url = 'http://localhost:' + str(config.port) + '/preprocess?sentence=' + sentence)
-    return r.json()
-
-def pipeline(sentence):
-    r = requests.get(url = 'http://localhost:' + str(config.port) + '/pipeline?sentence=' + sentence)
-    return r.json()
-
-def loadrules():
-    r = requests.get(url = 'http://localhost:' + str(config.port) + '/loadrules')
-    return r.json()
-
 def load_rules(path):
     rules = {}
     for filename in os.listdir(path):
@@ -112,6 +100,9 @@ def preprocess_sr_tags(sr_tags_list:list, pos_tags:list):
     # If more than one long tag list, check which tag list need to be merged with V
     sentence = ' '.join([tag[0] for tag in pos_tags])
     for sr_dict in sr_tags_list:
+        if 'V' not in sr_dict:
+            continue
+
         # rewrite V tag
         if 'going' == verb_phrase[-5:]:
             # be going to
@@ -196,6 +187,32 @@ def merge_sr_tags(sr_tags_list:list, pos_tags:list):
     return [sorted(sr_tags, key = lambda i: order[sr_tags.index(i)])]
 
 def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
+    # 将不及物动词后面的介词IN或TO分离
+    sr_t = None
+    sr_t_index = None
+    sr_t_list = [t[0] for t in sr_tags]
+    if 'V' in sr_t_list:
+        # print('has V')
+        sr_t_index = sr_t_list.index('V') + 1
+        if len(sr_t_list) > sr_t_index:
+            # print('has target_sr_tag')
+            target_sr_tag = sr_tags[sr_t_index]
+            if ' ' in target_sr_tag[1]:
+                # print('is phrase')
+                # print(target_sr_tag)
+                target_w = target_sr_tag[1].split(' ')[0]
+                target_w_pos = None
+                for p in pos_tags:
+                    if p[0] == target_w:
+                        target_w_pos = p
+                # print(target_w_pos)
+                if target_w_pos and target_w_pos[1] in ['TO', 'IN', 'RP']:
+                    sr_t = (target_w_pos[1], target_w_pos[0])
+    if sr_t:
+        sr_tags[sr_t_index] = (sr_tags[sr_t_index][0], sr_tags[sr_t_index][1].replace(sr_t[1] + ' ', ''))
+        sr_tags.insert(sr_t_index, sr_t)
+
+    # 统计VB和NN
     word_amount_pos_tags = len(pos_tags)
     word_amount_sr_tags = len(' '.join([t[1] for t in sr_tags]).split(' '))
     vb_amount = 0
@@ -206,8 +223,10 @@ def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
         if 'NN' == t[1][:2]:
             nn_amount = nn_amount + 1
     if vb_amount >= 3 and nn_amount >= 3 and (word_amount_pos_tags - word_amount_sr_tags) >= 3:
+        print('# merge_tags_SR_based() ')
         return merge_tags_sr_based(pos_tags, ne_tags, sr_tags)
     else:
+        print('# merge_tags_POS_based() ')
         return merge_tags_pos_based(pos_tags, ne_tags, sr_tags)
     
 def merge_tags_sr_based(pos_tags:list, ne_tags:list, sr_tags:list):
@@ -417,13 +436,19 @@ def is_tag_match(tag1, tag2):
             return True
         else:
             return False
-    # VBP == VBZ
-    elif 'VB' in tag1 or 'VB' in tag2:
+    # VBP == VBZ, VBZ::V != VBZ::
+    elif 'VB' in tag1 and 'VB' in tag2:
         verb_list = ['VBP', 'VBZ']
-        if tag1.split(':')[0] in verb_list and tag2.split(':')[0] in verb_list:
-            return True
+        if tag1.split(':')[2] == tag2.split(':')[2]:
+            if tag1.split(':')[0] in verb_list and tag2.split(':')[0] in verb_list:
+                return True
+            else:
+                return False
         else:
             return False
+    # IN == TO
+    elif tag1.split(':')[2] in ['IN', 'TO'] and tag2.split(':')[2] in ['IN', 'TO']:
+        return True
     # NNP(S):LOC:ARG1 == NNP(S):LOC:ARGM-DIR
     elif 'LOC:ARG' in tag1 and 'LOC:ARG' in tag2:
         return True
@@ -446,6 +471,7 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
     # 已知：
     # Xd = [A, B, C, G]
     # Xi = [W, Y, A, C, G]
+    # 
     # Yd = [A, B, C, D, E]
     # 未知：
     # Yi = [W, Y, A, C, D, E]
@@ -502,6 +528,7 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
         print(append_list)
     wh_tag = rule['v'][0].split(':')[0]
     for tag in append_list:
+
         if ',::' == tag:
             continue
         tagl = tag.split(':')
@@ -520,6 +547,11 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
                 new_seq.insert(index, tag)
                 is_break = True
         if is_break: continue
+
+        if config.debug:
+            print('Processing current append tag: ')
+            print(tag)
+
         if 'V' in tagl[2]:
             sr_neg_newseq = [t.split(':')[2][:8] for t in new_seq]
             # If NEG in new_seq, insert the verb tag to the next element of NEG of new_seq
@@ -752,6 +784,7 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
         if is_verb_flag and verb_list[0][0] == verb_list[1][0]:
             is_replace_first_verb = True
         # 没有过去分词并且没有情态动词，并且第一个verb属于vbd，vbz，且不是否定句，则互换2个verb位置
+        # 只有出现匹配不到的SSU，且第一个动词的POS是VBD或者VBZ，才需要交换位置。
         if is_verb_flag and 'VBN' not in verb_pos_list and \
             'MD' not in verb_pos_list and verb_list[0][1][:3] in ['VBD', 'VBZ'] and \
                 'not' not in question:
