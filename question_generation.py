@@ -24,7 +24,7 @@ class QuestionGeneration:
     tokenizer = None
     preprocess_instance = None
     generate_filling_in_question = True
-    is_distractor = True
+    generate_distractor = True
 
     def __init__(self):
         self.wn = WordNet()
@@ -72,16 +72,20 @@ class QuestionGeneration:
         sentences = helper.segment_by_sentence(text, self.tokenizer)
 
         # Generate distractors
-        if self.is_distractor:
+        if self.generate_distractor:
             dg = DistractorGeneration(text)
 
         for sentence in sentences:
             # QG
             qaps = self.pipeline(sentence)
-            if qaps:
-                if self.is_distractor:
-                    qaps['Distractors'] = dg.distractors(qaps['Answer'].split(' '))
-                rst.append(qaps)
+            if len(qaps)>0: pos_tags = helper.pos(qaps[0]['Sentence'])
+            # Generate distractors
+            if self.generate_distractor:
+                for qap in qaps:
+                    qap['Distractors'] = dg.distractors(qap['Answer'], pos_tags)
+                    rst.append(qap)
+            else:
+                rst = rst + qaps
 
         return rst
 

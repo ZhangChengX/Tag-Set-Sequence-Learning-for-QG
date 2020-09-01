@@ -22,13 +22,27 @@ class DistractorGeneration:
         # self._noun_list = self.extract_noun(text)
         self._ne = self.extract_named_entity(text)
     
-    def distractors(self, correct_answer:list):
+    def distractors(self, answer:str, pos_tags:list):
+        if config.debug:
+            print('### Distractors')
+            print('')
         n = 3 # number of distractors to be generated
         distractors = []
-        new_answer = self.merge_answer(correct_answer)
-        if config.debug:
-            print('New answer: ', new_answer)
-        new_answer.reverse()
+        correct_tags = []
+        # correct_tags = self.merge_answer(correct_tags)
+
+        # pos_tags = helper.pos(sentence)
+        pos_tags_word_list = [t[0] for t in pos_tags]
+        for word in answer.split(' '):
+            index = pos_tags_word_list.index(word)
+            pos_tag = pos_tags[index][1]
+            ne_tag = ''
+            for k, v in self._ne.items():
+                if word in v:
+                    ne_tag = k
+            correct_tags.append({'W': word, 'POS': pos_tag, 'NE': ne_tag})
+
+        correct_tags.reverse()
         
         # Collect distracted words
         candidates_dict = {} 
@@ -36,7 +50,7 @@ class DistractorGeneration:
         # candidates_dict = {'target_word': [('candidate', word2vec, WUP, edit_distance)]}
         
         # by NE
-        for d in new_answer:
+        for d in correct_tags:
             if d['NE'] == 'PER' and 'PER' in self._ne and len(self._ne['PER']) > 0:
                 candidates_dict[d['W']] = [(t, 1, 1, 1) for t in self.get_ramdom_words(self._ne['PER'], [d['W']], 3)]
             if d['NE'] == 'ORG' and 'ORG' in self._ne and  len(self._ne['ORG']) > 0:
@@ -56,7 +70,7 @@ class DistractorGeneration:
                     11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen', 15: 'fifteen', \
                     20: 'twenty', 30: 'thirty', 40: 'fourty', 50: 'fifty', \
                     100: 'hundred', 1000: 'thousand'}
-            for d in new_answer:
+            for d in correct_tags:
                 if d['POS'] == 'CD':
                     if d['W'].isdigit():
                         cd_list = [str(int(d['W']) + 1), str(int(d['W']) + 1), str(int(d['W']) + 10)]
@@ -81,7 +95,7 @@ class DistractorGeneration:
 
         if len([j for i in candidates_dict.values() for j in i]) < n:
             # by Word2vec
-            for d in new_answer:
+            for d in correct_tags:
                 if d['POS'][:2] == 'NN' or d['POS'][:2] == 'VB':
                     similar_words = self.get_most_similar_words(d, 'positive')
                     if len(similar_words) > 0:
@@ -97,7 +111,7 @@ class DistractorGeneration:
                 print('Word2vec: ', candidates_dict)
 
             # by POS NN and VB
-            for d in new_answer:
+            for d in correct_tags:
                 if d['POS'][:2] == 'NN' or d['POS'][:2] == 'VB':
                     synonyms, antonyms, hypernyms = self.get_synonyms_antonyms(d)
                     for t in antonyms:
@@ -126,48 +140,161 @@ class DistractorGeneration:
                     print(c[0], c[4])
 
         # Build distractors
-        new_answer.reverse()
+        correct_tags.reverse()
         for k, v in candidates_dict.items():
-            new_answer_str = ' '.join([w['W'] for w in new_answer])
+            correct_tags_str = ' '.join([w['W'] for w in correct_tags])
             for t in v:
-                distractor = new_answer_str.replace(k, t[0])
+                distractor = correct_tags_str.replace(k, t[0])
                 distractors.append(distractor)
         
         return distractors
 
-    def merge_answer(self, answer):
-        # answer = [{'W': 'John', 'POS': 'NN', 'NE': 'U-PER'}, {'W': 'Wick', 'POS': 'NN', 'NE': 'U-PER'}]
-        # Merge continuous words with same NE tag
-        new_answer = []
-        skip_index = []
-        total = len(answer)
-        for i in range(total):
-            if i in skip_index:
-                continue
+    # def distractors(self, correct_answer:list):
+    #     n = 3 # number of distractors to be generated
+    #     distractors = []
+    #     # correct_answer = self.merge_answer(correct_answer)
+    #     if config.debug:
+    #         print('New answer: ', correct_answer)
+    #     correct_answer.reverse()
+        
+    #     # Collect distracted words
+    #     candidates_dict = {} 
+    #     antonym_candidates_list = []
+    #     # candidates_dict = {'target_word': [('candidate', word2vec, WUP, edit_distance)]}
+        
+    #     # by NE
+    #     for d in correct_answer:
+    #         if d['NE'] == 'PER' and 'PER' in self._ne and len(self._ne['PER']) > 0:
+    #             candidates_dict[d['W']] = [(t, 1, 1, 1) for t in self.get_ramdom_words(self._ne['PER'], [d['W']], 3)]
+    #         if d['NE'] == 'ORG' and 'ORG' in self._ne and  len(self._ne['ORG']) > 0:
+    #             candidates_dict[d['W']] = [(t, 1, 1, 1) for t in self.get_ramdom_words(self._ne['ORG'], [d['W']], 3)]
+    #         if d['NE'] == 'LOC' and 'LOC' in self._ne and  len(self._ne['LOC']) > 0:
+    #             candidates_dict[d['W']] = [(t, 1, 1, 1) for t in self.get_ramdom_words(self._ne['LOC'], [d['W']], 3)]
+    #         # if d['NE'] == 'MISC' and 'MISC' in self._ne and  len(self._ne['MISC']) > 0:
+    #         #     candidates_dict[d['W']] = [(t, 1, 1, 1) for t in self.get_ramdom_words(self._ne['MISC'], [d['W']], 3)]
+    #     if config.debug:
+    #         print('NE: ', candidates_dict)
+        
+    #     # by POS CD numeral
+    #     if len([j for i in candidates_dict.values() for j in i]) < n:
+    #         # TODO
+    #         word2digit = {1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', \
+    #                 6: 'six', 7: 'seven', 8: 'eight', 9:'nine', 10: 'ten', \
+    #                 11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen', 15: 'fifteen', \
+    #                 20: 'twenty', 30: 'thirty', 40: 'fourty', 50: 'fifty', \
+    #                 100: 'hundred', 1000: 'thousand'}
+    #         for d in correct_answer:
+    #             if d['POS'] == 'CD':
+    #                 if d['W'].isdigit():
+    #                     cd_list = [str(int(d['W']) + 1), str(int(d['W']) + 1), str(int(d['W']) + 10)]
+    #                 elif d['W'] in word2digit.values():
+    #                     digit = list(word2digit.keys())[list(word2digit.values()).index(d['W'])]
+    #                     cd_list = []
+    #                     for i in [digit + 1, digit - 1, digit + 2]:
+    #                         if i in word2digit.keys():
+    #                             cd_list.append(list(word2digit.values())[list(word2digit.keys()).index(i)])
+    #                         else:
+    #                             cd_list.append(str(i))
+    #                 else:
+    #                     cd_list = ['one', 'two', 'three']
 
-            # Looking for continuous words with same NE tag
-            is_loop = True
-            k = i
-            while is_loop:
-                if total > k + 1:
-                    if answer[i]['NE'][2:] == answer[k + 1]['NE'][2:] and \
-                        (answer[i]['NE'] != 'O' and answer[k + 1]['NE'] != 'O'):
-                        k = k + 1
-                        skip_index.append(k)
-                    else:
-                        is_loop = False
-                else:
-                    is_loop = False
+    #                 if d['W'] in candidates_dict.keys():
+    #                     candidates_dict[d['W']] = candidates_dict[d['W']] + [(t, 1, 1, 1) for t in cd_list]
+    #                 else:
+    #                     candidates_dict[d['W']] = [(t, 1, 1, 1) for t in cd_list]
+        
+    #         if config.debug:
+    #             print('POS CD: ', candidates_dict)
 
-            if k > i:
-                phrase = ' '.join([answer[j]['W'] for j in range(i, k+1)])
-                candidates_dict = {'W': phrase, 'POS': answer[i]['POS'], 'NE': answer[i]['NE'][2:]}
-            else:
-                candidates_dict = answer[i].copy()
-                candidates_dict['NE'] = candidates_dict['NE'][2:]
+    #     if len([j for i in candidates_dict.values() for j in i]) < n:
+    #         # by Word2vec
+    #         for d in correct_answer:
+    #             if d['POS'][:2] == 'NN' or d['POS'][:2] == 'VB':
+    #                 similar_words = self.get_most_similar_words(d, 'positive')
+    #                 if len(similar_words) > 0:
+    #                     similar_words.reverse()
+    #                     if d['W'] in candidates_dict.keys():
+    #                         candidates_dict[d['W']] = candidates_dict[d['W']] + [similar_words[j] for j in range(n) if len(similar_words) > j]
+    #                     else:
+    #                         candidates_dict[d['W']] = [similar_words[j] for j in range(n) if len(similar_words) > j]
+    #                 # break if the number of result greater than n * 2
+    #                 if len([j for i in candidates_dict.values() for j in i]) >= n * 2:
+    #                     break
+    #         if config.debug:
+    #             print('Word2vec: ', candidates_dict)
+
+    #         # by POS NN and VB
+    #         for d in correct_answer:
+    #             if d['POS'][:2] == 'NN' or d['POS'][:2] == 'VB':
+    #                 synonyms, antonyms, hypernyms = self.get_synonyms_antonyms(d)
+    #                 for t in antonyms:
+    #                     antonym_candidates_list.append(t[0])
+    #                 if len(synonyms + antonyms + hypernyms) > 0:
+    #                     if d['W'] in candidates_dict.keys():
+    #                         candidates_dict[d['W']] = candidates_dict[d['W']] + synonyms + antonyms + hypernyms
+    #                     else:
+    #                         candidates_dict[d['W']] = synonyms + antonyms + hypernyms
+    #                 if len([j for i in candidates_dict.values() for j in i]) >= n:
+    #                     break
+    #         if config.debug:
+    #             print('WordNet POS: ', candidates_dict)
+    #             print('Antonyms: ', antonym_candidates_list)
+
+    #     if len([j for i in candidates_dict.values() for j in i]) < 1:
+    #         return []
+
+    #     # Ranking
+    #     candidates_dict = self.ranking(candidates_dict, antonym_candidates_list)
+    #     if config.debug:
+    #         print('Candidates with ranking:')
+    #         for k, v in candidates_dict.items():
+    #             print(k)
+    #             for c in v:
+    #                 print(c[0], c[4])
+
+    #     # Build distractors
+    #     correct_answer.reverse()
+    #     for k, v in candidates_dict.items():
+    #         correct_answer_str = ' '.join([w['W'] for w in correct_answer])
+    #         for t in v:
+    #             distractor = correct_answer_str.replace(k, t[0])
+    #             distractors.append(distractor)
+        
+    #     return distractors
+
+    # def merge_answer(self, answer):
+    #     # answer = [{'W': 'John', 'POS': 'NN', 'NE': 'U-PER'}, {'W': 'Wick', 'POS': 'NN', 'NE': 'U-PER'}]
+    #     # Merge continuous words with same NE tag
+    #     new_answer = []
+    #     skip_index = []
+    #     total = len(answer)
+    #     for i in range(total):
+    #         if i in skip_index:
+    #             continue
+
+    #         # Looking for continuous words with same NE tag
+    #         is_loop = True
+    #         k = i
+    #         while is_loop:
+    #             if total > k + 1:
+    #                 if answer[i]['NE'][2:] == answer[k + 1]['NE'][2:] and \
+    #                     (answer[i]['NE'] != 'O' and answer[k + 1]['NE'] != 'O'):
+    #                     k = k + 1
+    #                     skip_index.append(k)
+    #                 else:
+    #                     is_loop = False
+    #             else:
+    #                 is_loop = False
+
+    #         if k > i:
+    #             phrase = ' '.join([answer[j]['W'] for j in range(i, k+1)])
+    #             candidates_dict = {'W': phrase, 'POS': answer[i]['POS'], 'NE': answer[i]['NE'][2:]}
+    #         else:
+    #             candidates_dict = answer[i].copy()
+    #             candidates_dict['NE'] = candidates_dict['NE'][2:]
             
-            new_answer.append(candidates_dict)
-        return new_answer
+    #         new_answer.append(candidates_dict)
+    #     return new_answer
 
     # def extract_noun(self, text):
     #     pos_tag = nltk.pos_tag(nltk.word_tokenize(text))
