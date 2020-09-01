@@ -2,6 +2,7 @@
 
 
 from allennlp.predictors.predictor import Predictor
+import allennlp_models.tagging
 import config
 
 

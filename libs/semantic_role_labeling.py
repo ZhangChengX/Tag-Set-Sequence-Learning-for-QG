@@ -1,6 +1,7 @@
 # coding: utf-8
 
 from allennlp.predictors.predictor import Predictor
+# import allennlp_models.syntax.srl
 import config
 import re
 
@@ -10,7 +11,7 @@ class SemanticRoleLabeling(object):
     predictor = None
 
     def __init__(self):
-        self.predictor = Predictor.from_path(config.SRL_model)
+        self.predictor = Predictor.from_path(archive_path=config.SRL_model)
 
     def predict(self, sentence):
         raw_dict = self.predictor.predict(sentence)

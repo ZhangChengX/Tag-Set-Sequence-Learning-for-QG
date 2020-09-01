@@ -1,42 +1,40 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import warnings
-warnings.simplefilter('ignore')
+# import warnings
+# warnings.simplefilter('ignore')
 
-from libs.semantic_role_labeling import SemanticRoleLabeling
-from libs.named_entity_recognition import NamedEntityRecognition
-from libs.dependency_parsing import DependencyParsing
-# from libs.coreference_resolution import CoreferenceResolution
-from libs.sentence_simplification import SentenceSimplification
-from libs.wordnet import WordNet
-from nltk.data import load
 import config
 import helper
-import rule_based_rules as rulebased
+from nltk.data import load
+from libs.wordnet import WordNet
+from distractor_generation import DistractorGeneration
 
 
 class QuestionGeneration:
 
-    ner = None
-    srl = None
-    dp = None
+    # ner = None
+    # srl = None
+    # pos = None
+    # cr = None
+    # ss = None
     wn = None
-    cr = None
-    ss = None
     rules = None
     tokenizer = None
+    preprocess_instance = None
+    generate_filling_in_question = True
+    is_distractor = True
 
     def __init__(self):
-        self.ner = NamedEntityRecognition()
-        self.srl = SemanticRoleLabeling()
-        self.dp = DependencyParsing()
-        # self.ss = SentenceSimplification()
-        # self.cr = CoreferenceResolution()
         self.wn = WordNet()
         self.rules = self.load_rules()
         self.tokenizer = load('tokenizers/punkt/{0}.pickle'.format('english'))
-
+        if config.dev_mode:
+            self.preprocess_instance = type('', (object,), {'preprocess': lambda s: helper.preprocess(s), 'ctree': lambda s: helper.ctree(s)})
+        else:
+            from preprocess import Preprocess
+            self.preprocess_instance = Preprocess()
+            
     def load_rules(self):
         self.rules = helper.load_rules(config.rules_path)
         if config.debug:
@@ -44,8 +42,23 @@ class QuestionGeneration:
                 print('Rule ' + k + ': ' + str(len(v)))
         return self.rules
 
+    def learn_rule(self, rule_pair:str):
+        if '|' in rule_pair:
+            declarative = rule_pair.split('|')[0].strip()
+            interrogative = rule_pair.split('|')[1].strip()
+            ques_word = interrogative.split()[0].capitalize()
+            from train import train_pair
+            train_pair(ques_word, declarative, interrogative)
+            return True
+        return False
+    
+    def preprocess(self, sentence:str):
+        return self.preprocess_instance.preprocess(sentence)
+
     def generate(self, text):
         rst = []
+
+        text = text.replace('-', ' - ')
         
         # Coreference Resolution
         # text = self.cr.predict(text)
@@ -57,41 +70,28 @@ class QuestionGeneration:
         # sentences = helper.segment_by_sentence(text)
         sentences = helper.segment_by_sentence(text, self.tokenizer)
 
+        # Generate distractors
+        if self.is_distractor:
+            dg = DistractorGeneration(text)
+
         for sentence in sentences:
-            qgen = self.pipeline(sentence)
-            if qgen:
-                rst.append(qgen)
-        # TODO question filter
+            # QG
+            qaps = self.pipeline(sentence)
+            if qaps:
+                if self.is_distractor:
+                    qaps['Distractors'] = dg.distractors(qaps['Answer'].split(' '))
+                rst.append(qaps)
+
         return rst
 
     def pipeline(self, sentence:str):
-        sentence = sentence.strip()
-        word_list = sentence.split(' ')
-        if len(word_list) < 3: return []
-        if sentence[-1:] == '?': return []
-        if sentence[-2:] == '?.': return []
-        if word_list[0].lower() in ['who', 'whose', 'what', 'where', 'when', 'which', 'why', 'how']:
-            return []
-
-        # Remove the continuous prep in the begining of the sentence
-        is_break = False
-        for i, w in enumerate(word_list):
-            if is_break:
-                break
-            if w.lower() in ['and', 'but', 'for', 'or', 'plus', 'so', 'therefore', 'because']:
-                word_list.pop(i)
-            else:
-                is_break = True
-
-        # if word_list[0].lower() in ['and', 'but', 'for', 'or', 'plus', 'so', 'therefore', 'because']:
-        #     sentence = sentence.replace(word_list[0], '')
-        
         question_list = []
 
         # Get merged tags list
         decla_tags_list = self.preprocess(sentence)
 
         # # Previous version, rules based QG
+        # import rule_based_rules as rulebased
         # if config.rule_based:
         #     for tags_list in decla_tags_list:
         #         labels = {}
@@ -121,17 +121,30 @@ class QuestionGeneration:
 
         for decla_tags in decla_tags_list:
 
+            if len(decla_tags) < 3:
+                continue
+
             decla_seq = [tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags]
             ne_decla_seq = [tag['NE'] for tag in decla_tags]
             sr_decla_seq = [tag['SR'] for tag in decla_tags]
+            pos_decla_seq = [tag['POS'] for tag in decla_tags]
+
+            if config.debug:
+                print('### After Preprocess')
+                print('Sub Sentence:')
+                print(' '.join([tag['W'] for tag in decla_tags]))
+                print(' '.join(decla_seq))
+                print('')
 
             for ques_word, rules in self.rules.items():
 
-                if 'Who' == ques_word and 'PER' not in ne_decla_seq:
+                if 'Who' == ques_word and not ('PER' in ne_decla_seq or 'PRP' in pos_decla_seq):
                     continue
                 if 'Where' == ques_word and 'LOC' not in ne_decla_seq:
                     continue
                 if 'When' == ques_word and 'ARGM-TMP' not in sr_decla_seq:
+                    continue
+                if 'How_many' == ques_word and 'CD' not in pos_decla_seq:
                     continue
 
                 # Find matching rule
@@ -145,8 +158,11 @@ class QuestionGeneration:
                     #     continue
                     if lcs < 3:
                         continue
+                    # k = 0 表示 匹配到的sequence一定要是输入的陈述句sequence的子集
                     if len(k.split()) - lcs > config.matching_fuzzy:
                         continue
+                    # if len(k.split()) == len(decla_seq):
+                    #     print('### Perfect Matching')
                     if lcs > max_lcs:
                         max_lcs = lcs
                         max_lcs_rule = {'k': k.split(), 'v': v.split()}
@@ -166,28 +182,26 @@ class QuestionGeneration:
                         print(max_lcs_rule['k'])
                         print('')
                     continue
-
-                if config.debug:
-                    print('### Matching ###')
-                    print('Question word: ' + ques_word)
-                    print('Declarative Sentense:')
-                    print(' '.join([tag['W'] for tag in decla_tags]))
-                    print('Declarative tags:')
-                    print([(tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'], tag['W']) for tag in decla_tags])
-                    print('Declarative tag seq:')
-                    print(' '.join(decla_seq))
-                    print('Matched rule: ')
-                    if len(max_lcs_rule_list) > 1:
-                        for max_lcs_rule in max_lcs_rule_list:
-                            print(max_lcs_rule['k'])
-                            print(max_lcs_rule['v'])
-                    else:
-                        print(max_lcs_rule_list[0]['k'])
-                        print(max_lcs_rule_list[0]['v'])
-                    print('MaxLCS: ' + str(max_lcs) + ' Total: ' + str(len(max_lcs_rule_list)))
-                    print('')
                 
                 for max_lcs_rule in max_lcs_rule_list:
+
+                    if config.debug:
+                        print('### Matching ###')
+                        print('Question word: ' + ques_word)
+                        print('Declarative Sentense:')
+                        print(' '.join([tag['W'] for tag in decla_tags]))
+                        print('Declarative tags:')
+                        print([(tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'], tag['W']) for tag in decla_tags])
+                        print('Declarative tag seq:')
+                        print(' '.join(decla_seq))
+                        print('Matched rule: ')
+                        print(max_lcs_rule['k'])
+                        print(max_lcs_rule['v'])
+                        print('MaxLCS: ' + str(max_lcs) + ' Total: ' + str(len(max_lcs_rule_list)))
+                        if len(decla_tags) == len(max_lcs_rule['k']):
+                            print('This is Perfect Matching')
+                        print('')
+
                     # Get question seq
                     question_seq, answer_tags = helper.get_question_seq_by_rule(decla_seq, max_lcs_rule)
 
@@ -202,7 +216,8 @@ class QuestionGeneration:
                     # If multi answer tags, choose ARG/LOC/PER as the only one, otherwise select NN.
                     if len(answer_tags) > 1:
                         for t in answer_tags.copy():
-                            if 'ARG0' in t or 'ARG1' in t or 'ARG2' in t or 'LOC' in t or 'PER' in t or 'TMP' in t:
+                            if 'ARG0' in t or 'ARG1' in t or 'ARG2' in t \
+                                 or 'LOC' in t or 'PER' in t or 'TMP' in t or 'CD' in t:
                                 answer_tags = [t]
                                 break
                         if len(answer_tags) > 1:
@@ -224,7 +239,6 @@ class QuestionGeneration:
                         print('')
                         continue
 
-
                     # Generate question according to the seq
                     question = helper.generate_question_by_seq(ques_word, decla_tags, question_seq, answer_tags, self.wn)
                     if config.debug:
@@ -237,11 +251,6 @@ class QuestionGeneration:
         
                     if not question:
                         continue
-                    
-                    if config.debug:
-                        print('### generate_answer ###')
-                        print(answer_tags)
-                        print('')
 
                     if 1 == len(answer_tags):
                         if answer_tags[0] in decla_seq:
@@ -251,93 +260,90 @@ class QuestionGeneration:
                             if len(tmp_tags) > 0:
                                 answer = decla_tags[decla_seq.index(tmp_tags[0])]['W']
                             else:
-                                answer = answer_tags
+                                print('Can not find answer tag.')
+                                continue
+                                # answer = answer_tags
                     else:
                         answer = answer_tags
+                    
+                    if config.debug:
+                        print('### generate_answer ###')
+                        print(answer)
+                        print('')
+
                     question_list.append({'Sentence': sentence, 'Question': question, 'Answer': answer})
+
+            # Gap Question
+            if self.generate_filling_in_question:
+                filling_in_qestions = self.generate_filling_in_question(sentence)
+                question_list = question_list + filling_in_qestions
+                if config.debug:
+                    print('### generate_filling_in_question ###')
+                    print(filling_in_qestions)
+                    print('')
 
             # Remove duplicated question
             tmp_ques_list = []
+            tmp_what_ques_list = []
+            tmp_other_ques_list = []
             for question in question_list.copy():
                 if question['Question'] in tmp_ques_list:
                     question_list.remove(question)
+                elif question['Question'][:4].lower() == 'what' and \
+                    'Who' + question['Question'][4:] in [q['Question'] for q in question_list]:
+                    # Remove duplicated What question
+                    question_list.remove(question)
+                    if config.debug:
+                        print('### Removed duplicated What question ###')
+                        print(question)
+                        print('')
                 else:
                     tmp_ques_list.append(question['Question'])
-                
+
         return question_list
-    
-    def preprocess(self, sentence:str):
-        sentence = sentence.replace("’", "'")
-        sentence = sentence.replace("`", "'")
-        sentence = sentence.replace('“', '"')
-        sentence = sentence.replace('”', '"')
-        sentence = sentence.replace("'ve", " have")
-        # didn't -> did not, haven't -> have not, can't -> can not
-        if "can't" in sentence:
-            sentence = sentence.replace("'t", ' not')
-        sentence = sentence.replace("n't", ' not')
 
-        # Semantic Role Labeling
-        sr_tags_list = self.srl.predict(sentence)
-        if not sr_tags_list:
-            return []
-
-        # POS Tagging
-        pos_tags = self.dp.predict(sentence)
-
-        # Named Entity Information
-        ne_tags = self.ner.predict(sentence)
-
-        if config.debug:
-            print('### Pre-processing ###')
-            print('Before preprocess_sr_tags():')
-            print('sr_tags_list = ' + str(sr_tags_list))
-
-        sr_tags_list = helper.preprocess_sr_tags(sr_tags_list, pos_tags)
-
-        if config.debug:
-            print('After preprocess_sr_tags():')
-            print('sr_tags_list = ' + str(sr_tags_list))
-            print('')
-        
-        rst = []
-        for sr_tags in sr_tags_list:
-            sr_t_list = [t[0][:4] for t in sr_tags if t[0][:4] != 'ARGM']
-            if len(sr_t_list) < 2:
+    def generate_filling_in_question(self, sentence):
+        # Generate gap question
+        ctree = self.preprocess_instance.ctree(sentence.strip())
+        entities = helper.get_sub_trees(ctree, ['NP'])
+        # Build candidate questions
+        candidates = []
+        # if len(entities) > 7:
+        #     return False
+        for entity in entities:
+            candidate_q = {}
+            candidate_gap = str(' '.join(entity))
+            # Replace sentence candidate_gap with ___
+            gap_question = sentence.replace(candidate_gap, '______')
+            if gap_question == sentence:
                 continue
-            merged_tags = helper.merge_tags(pos_tags, ne_tags, sr_tags)
-            rst.append(merged_tags)
+            if candidate_gap == sentence:
+                continue
+            candidate_q['Sentence'] = sentence
+            candidate_q['Question'] = gap_question
+            candidate_q['Answer'] = candidate_gap
+            candidates.append(candidate_q)
+        # print(candidates)
+        return candidates
 
-            if config.debug:
-                print('### merged_tags: ###')
-                print('Sentence: ' + sentence)
-                print('Sub Sentence: ' + str(' '.join([t[1] for t in sr_tags])))
-                print('pos_tags = ' + str(pos_tags))
-                print('ne_tags = ' + str(ne_tags))
-                print('sr_tags = ' + str(sr_tags))
-                print('merged_tags = ' + str(merged_tags))
-                print([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in merged_tags])
-                print('')
-        
-        # return [[{'a':'b'}]]
-        return rst
-    
 
 if __name__ == "__main__":
     qg = QuestionGeneration()
     while True:
         sentence = input('\nType in a sentence: \n')
-        if sentence == 'exit' or sentence == 'q':
-            exit()
         if sentence == '':
             continue
-        # sentence = qg.ss.simplify(sentence)
-        for sent in sentence:
-            questions_list = qg.pipeline(sent)
-            for question in questions_list:
-                print('Sentence: ' + question['Sentence'])
-                print('Question: ' + question['Question'])
-                print('Answer: ' + question['Answer'])
-                print('')
+        if sentence == 'exit' or sentence == 'q':
+            exit()
+        if sentence == 'learn':
+            learn_rule = input('\nType in a rule: declarative_sentence | interrogative_sentence \n')
+            if qg.learn_rule(learn_rule):
+                qg.load_rules()
+        questions_list = qg.pipeline(sentence)
+        for question in questions_list:
+            print('Sentence: ' + question['Sentence'])
+            print('Question: ' + question['Question'])
+            print('Answer: ' + question['Answer'])
+            print('')
         print('')
     

@@ -5,7 +5,36 @@ import json
 import requests
 import config
 from nltk.metrics.distance import edit_distance
+from nltk.tree import Tree
 
+
+def preprocess(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/preprocess?sentence=' + sentence)
+    return r.json()
+
+def preprocess_learning(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/preprocess_learning?sentence=' + sentence)
+    return r.json()
+
+def pos(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/pos?sentence=' + sentence)
+    return r.json()
+
+def ner(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/ner?sentence=' + sentence)
+    return r.json()
+
+def srl(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/srl?sentence=' + sentence)
+    return r.json()
+
+def ctree(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/ctree?sentence=' + sentence)
+    return Tree.fromstring(r.json())
+
+def dtree(sentence):
+    r = requests.get(url = 'http://localhost:' + str(config.port) + '/dtree?sentence=' + sentence)
+    return r.json()
 
 def segment_by_sentence(text, tokenizer):
     # from nltk.tokenize import sent_tokenize
@@ -23,6 +52,17 @@ def load_rules(path):
             with open(path + filename) as file:
                 rules[filename[:-6]] = json.load(file)
     return rules
+
+def get_sub_trees(tree:Tree, labels = ['NP']):
+    ''' The height of a tree
+        containing no children is 1; the height of a tree
+        containing only leaves is 2; and the height of any other
+        tree is one plus the maximum of its children's
+        heights. '''
+    # Get subtrees that only contain one level subtree
+    # print(list(tree.subtrees()))
+    subtrees = list(tree.subtrees(filter=lambda x: x.label() in labels and x.height()<=3 ))
+    return [subtree.leaves() for subtree in subtrees]
 
 def get_new_interro_tags_by_decla_interro_tags(decla_tags:list, interro_tags:list):
     new_interro_tags = []
@@ -64,305 +104,7 @@ def get_new_interro_tags_by_decla_interro_tags(decla_tags:list, interro_tags:lis
     # k = ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags])
     # v = ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in new_interro_tags])
     return new_interro_tags
-
-def preprocess_sr_tags(sr_tags_list:list, pos_tags:list):
-    rst = []
-
-    if len(sr_tags_list) < 2:
-        sr_dict = sr_tags_list[0]
-        # Re-format
-        sr_tags = []
-        for k, v in sr_dict.items():
-            sr_tags.append((k, v))
-        rst.append(sr_tags)
-        return rst
-
-    # Check if there is any short tag list contain V need to be merged in
-    to_be_merge_list = []
-    verb_phrase = ''
-    for sr_dict in sr_tags_list.copy():
-        arg3_list = [k[:3] for k in sr_dict.keys()]
-        arg4_list = [k[:4] for k in sr_dict.keys()]
-        if 1 == len(sr_dict) and 'V' in sr_dict:
-            to_be_merge_list.append(sr_dict)
-            sr_tags_list.remove(sr_dict)
-            verb_phrase = verb_phrase + ' ' + sr_dict['V']
-        elif 2 == len(sr_dict) and 'ARG' in arg3_list and 'ARGM' not in arg4_list:
-            sr_tags_list.remove(sr_dict)
-            continue
-        elif 2 == len(sr_dict):
-            to_be_merge_list.append(sr_dict)
-            sr_tags_list.remove(sr_dict)
-            verb_phrase = verb_phrase + ' ' + list(sr_dict.values())[0] + ' ' + list(sr_dict.values())[1]
-        elif 0 == len(sr_dict):
-            sr_tags_list.remove(sr_dict)
-
-    # If more than one long tag list, check which tag list need to be merged with V
-    sentence = ' '.join([tag[0] for tag in pos_tags])
-    for sr_dict in sr_tags_list:
-        if 'V' not in sr_dict:
-            continue
-
-        # rewrite V tag
-        if 'going' == verb_phrase[-5:]:
-            # be going to
-            verb_phrase = verb_phrase + ' ' + 'to'
-        tmp_phrase1 = verb_phrase + ' ' + sr_dict['V']
-        tmp_phrase2 = sr_dict['V'] + ' ' + verb_phrase
-        if tmp_phrase1 in sentence:
-            sr_dict['V'] = tmp_phrase1
-        elif tmp_phrase2 in sentence:
-            sr_dict['V'] = tmp_phrase2
-
-        sr_dict['V'] = sr_dict['V'].strip()
-
-        # Re-format
-        sr_tags = []
-        for k, v in sr_dict.items():
-            sr_tags.append((k, v))
-        rst.append(sr_tags)
-
-    return rst
-
-
-    # rst = []
-    # is_merge = False
-    # # Check if the sr_tags_list can be merged
-    # for sr_dict in sr_tags_list:
-    #     if len(sr_dict) < 3 and len(sr_tags_list) > 1:
-    #         # Get the word phrase
-    #         tmp_words = ' '.join([v for v in sr_dict.values()])
-    #         # if the word phrase not in other sr_dict, is_merge set True
-    #         for sr_dict_2 in sr_tags_list:
-    #             if (sr_dict_2 != sr_dict) and (tmp_words not in ' '.join([v for v in sr_dict_2.values()])):
-    #                 is_merge = True
-    # if is_merge:
-    #     rst = merge_sr_tags(sr_tags_list, pos_tags)
-    # else:
-    #     for sr_dict in sr_tags_list:
-    #         sr_tags = []
-    #         for k, v in sr_dict.items():
-    #             sr_tags.append((k, v))
-    #         rst.append(sr_tags)
-
-    # return rst
-
-
-def merge_sr_tags(sr_tags_list:list, pos_tags:list):
-    sr_tags = []
-    sr_word_list = []
-    # Change format and get unsorted sr_tags
-    for sr_dict in sr_tags_list:
-        for k, v in sr_dict.items():
-            sr_tags.append((k, v))
-            sr_word_list.append(v)
-    if len(sr_tags_list) < 2:
-        return sr_tags
-    # Check if any word not exist in sr_tags but exist in pos_tags
-    for tag in pos_tags:
-        if tag[0] not in ' '.join(sr_word_list):
-            sr_tags.append((tag[1], tag[0]))
-    # Get order list
-    order = []
-    word_list = [tag[0] for tag in pos_tags]
-    for tag in sr_tags:
-        if tag[1] in word_list:
-            index = word_list.index(tag[1])
-            order.append(index)
-        else:
-            if ' ' in tag[1]:
-                t = tag[1].split()
-                index0 = word_list.index(t[0])
-                index1 = word_list.index(t[1])
-                if index0 + 1 == index1:
-                    order.append(index0)
-                else:
-                    if index0 in order:
-                        order.append(index1)
-                    else:
-                        order.append(index0)
-            else:
-                print('Error in merge_sr_tags()')
-    # Sort sr_tags by order list
-    return [sorted(sr_tags, key = lambda i: order[sr_tags.index(i)])]
-
-def merge_tags(pos_tags:list, ne_tags:list, sr_tags:list):
-    # 将不及物动词后面的介词IN或TO分离
-    sr_t = None
-    sr_t_index = None
-    sr_t_list = [t[0] for t in sr_tags]
-    if 'V' in sr_t_list:
-        # print('has V')
-        sr_t_index = sr_t_list.index('V') + 1
-        if len(sr_t_list) > sr_t_index:
-            # print('has target_sr_tag')
-            target_sr_tag = sr_tags[sr_t_index]
-            if ' ' in target_sr_tag[1]:
-                # print('is phrase')
-                # print(target_sr_tag)
-                target_w = target_sr_tag[1].split(' ')[0]
-                target_w_pos = None
-                for p in pos_tags:
-                    if p[0] == target_w:
-                        target_w_pos = p
-                # print(target_w_pos)
-                if target_w_pos and target_w_pos[1] in ['TO', 'IN', 'RP']:
-                    sr_t = (target_w_pos[1], target_w_pos[0])
-    if sr_t:
-        sr_tags[sr_t_index] = (sr_tags[sr_t_index][0], sr_tags[sr_t_index][1].replace(sr_t[1] + ' ', ''))
-        sr_tags.insert(sr_t_index, sr_t)
-
-    # 统计VB和NN
-    word_amount_pos_tags = len(pos_tags)
-    word_amount_sr_tags = len(' '.join([t[1] for t in sr_tags]).split(' '))
-    vb_amount = 0
-    nn_amount = 0
-    for t in pos_tags:
-        if 'VB' == t[1][:2]:
-            vb_amount = vb_amount + 1
-        if 'NN' == t[1][:2]:
-            nn_amount = nn_amount + 1
-    if vb_amount >= 3 and nn_amount >= 3 and (word_amount_pos_tags - word_amount_sr_tags) >= 3:
-        print('# merge_tags_SR_based() ')
-        return merge_tags_sr_based(pos_tags, ne_tags, sr_tags)
-    else:
-        print('# merge_tags_POS_based() ')
-        return merge_tags_pos_based(pos_tags, ne_tags, sr_tags)
     
-def merge_tags_sr_based(pos_tags:list, ne_tags:list, sr_tags:list):
-    # How many sr tags, how many merged tags
-    tags_list = []
-    word_list = [tag[0] for tag in pos_tags]
-    for sr_tag in sr_tags: 
-        sr_tag_word_list = sr_tag[1].split(' ')
-        tmp = {}
-        phrase_ne_tag_list = []
-        for w in sr_tag_word_list:
-            if w in word_list:
-                index = word_list.index(w)
-                pos_tag = pos_tags[index][1]
-                sr_t = sr_tag[0]
-                ne_tag = ne_tags[index][0]
-                ne_tag = '' if 'O' == ne_tag else ne_tag
-                ne_tag = 'PER' if 'PER' == ne_tag[-3:] else ne_tag
-                ne_tag = 'LOC' if 'LOC' == ne_tag[-3:] else ne_tag
-                ne_tag = 'ORG' if 'ORG' == ne_tag[-3:] else ne_tag
-                phrase_ne_tag_list.append(ne_tag)
-                # multi-words push into one SR tag, so only keep useful NE tag
-                if 'LOC' in phrase_ne_tag_list:
-                    ne_tag = 'LOC'
-                if 'PER' in phrase_ne_tag_list:
-                    ne_tag = 'PER'
-                if 'ORG' in phrase_ne_tag_list:
-                    ne_tag = 'ORG'
-                tmp = {'POS': pos_tag, 'NE': ne_tag, 'SR': sr_t, 'W': sr_tag[1]}
-        tags_list.append(tmp)
-    # remove the first element if it is ArgM
-    if 'ARGM-' == tags_list[0]['SR'][:5]:
-        tags_list.pop(0)
-    return tags_list
-
-def merge_tags_pos_based(pos_tags:list, ne_tags:list, sr_tags:list):
-    # How many pos tags, how many merged tags
-    tags_list = []
-    last_value = ''
-    current_value = ''
-    is_in_sr_tag = False
-    is_eq_sr_tag = False
-    phrase_ne_tag_list = []
-    sr_tags_words = [t[1] for t in sr_tags]
-    i = 0
-    for i in range(len(pos_tags)):
-        if pos_tags[i][1] == '.':
-            continue
-        # Check if any SR label contains tag, SR label could be a phrase.
-        for sr_tag in sr_tags:
-            if pos_tags[i][0] == sr_tag[1]:
-                is_eq_sr_tag = True
-                current_value = sr_tag[1]
-            if i > 0 and pos_tags[i-1][0] + ' ' + pos_tags[i][0] in sr_tag[1]:
-                is_in_sr_tag = True
-                current_value = sr_tag[1]
-            if len(pos_tags) > i+1 and pos_tags[i][0] + ' ' + pos_tags[i+1][0] in sr_tag[1]:
-                is_in_sr_tag = True
-                current_value = sr_tag[1]
-        ne_tag = '' if 'O' == ne_tags[i][0] else ne_tags[i][0]
-        ne_tag = 'PER' if 'PER' == ne_tag[-3:] else ne_tag
-        ne_tag = 'LOC' if 'LOC' == ne_tag[-3:] else ne_tag
-        ne_tag = 'ORG' if 'ORG' == ne_tag[-3:] else ne_tag
-        # print(pos_tags[i][0])
-        # print(is_in_sr_tag)
-        # print(is_eq_sr_tag)
-        # print('')
-        if is_in_sr_tag:
-            # print(pos_tags[i][0])
-            # print(last_value)
-            # print(current_value)
-            # print('-----')
-            # if current tag and previous tag are same SR tag, remove previous and add new one.
-            if last_value == current_value:
-                tags_list.pop()
-                # save each ne_tag to list in a phrase
-                phrase_ne_tag_list.append(ne_tag)
-            # # Get key by value in dict
-            # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
-            index = sr_tags_words.index(current_value)
-            # if ne_tag contains more than 1 other tags.
-            if len(phrase_ne_tag_list) > 1:
-                # multi-words push into one SR tag, so only keep useful NE tag
-                if 'LOC' in phrase_ne_tag_list:
-                    ne_tag = 'LOC'
-                if 'PER' in phrase_ne_tag_list:
-                    ne_tag = 'PER'
-                if 'ORG' in phrase_ne_tag_list:
-                    ne_tag = 'ORG'
-            # if phrase_ne_tag_list.count('') > 1:
-            #     ne_tag = ''
-            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
-            # print(tmp)
-            tags_list.append(tmp)
-            last_value = current_value
-        elif is_eq_sr_tag:
-            # Empty the list if the word is not in a phase
-            phrase_ne_tag_list = []
-            # # Get key by value in dict
-            # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
-            index = sr_tags_words.index(current_value)
-            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
-            # print(tmp)
-            tags_list.append(tmp)
-        else:
-            # Empty the list if the word is not in a phase
-            phrase_ne_tag_list = []
-
-            if pos_tags[i][0] in sr_tags_words:
-                index = sr_tags_words.index(pos_tags[i][0])
-                sr_t = sr_tags[index][0]
-            elif pos_tags[i][0] == 'not':
-                sr_t = 'ARGM-NEG'
-            else:
-                sr_t = ''
-            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_t, 'W': pos_tags[i][0]}
-            # print(tmp)
-            # print(pos_tags[i][0])
-            tags_list.append(tmp)
-        is_in_sr_tag = False
-        is_eq_sr_tag = False
-        i = i + 1
-
-    return make_tags_unique(tags_list)
-
-def make_tags_unique(tags):
-    seen = []
-    i = 0
-    for i in range(len(tags)):
-        joint_tag = tags[i]['POS'] + ':' + tags[i]['NE'] + ':' + tags[i]['SR']
-        if joint_tag in seen:
-            tags[i]['SR'] = tags[i]['SR'] + 'ID' + str(i)
-        else:
-            seen.append(joint_tag)
-        i = i + 1
-    return tags
 
 def adjust_order(new_seq, based_seq):
     rst_seq = []
@@ -418,21 +160,21 @@ def is_tag_match(tag1, tag2):
         return True
     # NN == NNS
     elif 'NN' in tag1 and 'NN' in tag2 and 'ARGM' not in tag1 and 'ARGM' not in tag2:
-        is_both_arg = False
+        is_same_arg = False
         if 'ARG0' in tag1 and 'ARG0' in tag2:
-            is_both_arg = True
+            is_same_arg = True
         elif 'ARG1' in tag1 and 'ARG1' in tag2:
-            is_both_arg = True
+            is_same_arg = True
         elif 'ARG2' in tag1 and 'ARG2' in tag2:
-            is_both_arg = True
+            is_same_arg = True
         elif 'ARG3' in tag1 and 'ARG3' in tag2:
-            is_both_arg = True
+            is_same_arg = True
         elif 'ARG4' in tag1 and 'ARG4' in tag2:
-            is_both_arg = True
+            is_same_arg = True
         elif 'ARG5' in tag1 and 'ARG5' in tag2:
-            is_both_arg = True
+            is_same_arg = True
         noun_list = ['NN', 'NNP', 'NNS', 'NNPS']
-        if is_both_arg and tag1.split(':')[0] in noun_list and tag2.split(':')[0] in noun_list:
+        if is_same_arg and tag1.split(':')[0] in noun_list and tag2.split(':')[0] in noun_list:
             return True
         else:
             return False
@@ -450,17 +192,17 @@ def is_tag_match(tag1, tag2):
     elif tag1.split(':')[2] in ['IN', 'TO'] and tag2.split(':')[2] in ['IN', 'TO']:
         return True
     # NNP(S):LOC:ARG1 == NNP(S):LOC:ARGM-DIR
-    elif 'LOC:ARG' in tag1 and 'LOC:ARG' in tag2:
+    elif 'LOC:ARG' in tag1 and 'LOC:ARG' in tag2 and 'ARGM' not in tag1 and 'ARGM' not in tag2:
         return True
-    # PER:ARG0
-    elif 'PER:ARG0' in tag1 and 'PER:ARG0' in tag2:
-        return True
-    # PER:ARG1
-    elif 'PER:ARG1' in tag1 and 'PER:ARG1' in tag2:
-        return True
-    # PER:ARG2
-    elif 'PER:ARG2' in tag1 and 'PER:ARG2' in tag2:
-        return True
+    # # PER:ARG0
+    # elif 'PER:ARG0' in tag1 and 'PER:ARG0' in tag2:
+    #     return True
+    # # PER:ARG1
+    # elif 'PER:ARG1' in tag1 and 'PER:ARG1' in tag2:
+    #     return True
+    # # PER:ARG2
+    # elif 'PER:ARG2' in tag1 and 'PER:ARG2' in tag2:
+    #     return True
     # ARG0, ARG1, ARG2
     elif 'PER:ARG' in tag1 and 'PER:ARG' in tag2 and edit_distance(tag1, tag2) == 1:
         return True
@@ -502,13 +244,13 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
     append_list = list(in_decla_but_not_in_rule_v - in_rule_k_but_not_in_rule_v)
     # 待生成问题的答案
     in_rule_k_but_not_in_rule_v = list(in_rule_k_but_not_in_rule_v)
-    if 1 < len(in_rule_k_but_not_in_rule_v):
-        print('########## answer tag more than 1 ##########')
-        print(decla_seq)
-        print(rule['k'])
-        print(rule['v'])
-        print('########## answer tag more than 1 ##########')
-        print('')
+    # if 1 < len(in_rule_k_but_not_in_rule_v):
+    #     print('########## answer tag more than 1 ##########')
+    #     print(decla_seq)
+    #     print(rule['k'])
+    #     print(rule['v'])
+    #     print('########## answer tag more than 1 ##########')
+    #     print('')
     if 0 == len(in_rule_k_but_not_in_rule_v):
         print('########## answer tag is 0 ##########')
         print(decla_seq)
@@ -526,6 +268,7 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
         print(new_seq)
         print('append_list:')
         print(append_list)
+        print('')
     wh_tag = rule['v'][0].split(':')[0]
     for tag in append_list:
 
@@ -651,14 +394,18 @@ def get_question_seq_by_rule(decla_seq:list, rule:dict):
             new_seq.insert(1, tag)
             continue
         new_seq.append(tag)
+
     # Ajdust order of new_seq according to rule['v']
     new_seq = adjust_order(new_seq, rule['v'])
+
     # Ajdust order, move ARGM-TMP to the end
+    arg_append_list = [t[-8:] for t in append_list]
     for seq in new_seq.copy():
-        if 'ARGM-TMP' in seq and 'WRB' not in seq:
+        if 'ARGM-TMP' in seq and 'ARGM-TMP' in arg_append_list and 'WRB' not in seq:
             tmp_seq = seq
             new_seq.remove(tmp_seq)
             new_seq.append(tmp_seq)
+
     return new_seq, in_rule_k_but_not_in_rule_v
 
 def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, answer_tags:list, wordnet):
@@ -678,7 +425,7 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
             if tagl[0][:2] == 'VB':
                 verb_list.append((decla_tags[index]['W'], tag))
         else:
-            if tagl[0] in ['WDT', 'WP', 'WP$', 'WRB']:
+            if tagl[0] in ['WDT', 'WP', 'WP$', 'WRB', 'WHM']: # WHM: How many/much
                 question.insert(0, ques_word)
                 continue
             if tagl[0] in decla_pos_tag:
@@ -731,10 +478,11 @@ def generate_question_by_seq(ques_word:str, decla_tags:list, interro_seq:list, a
                         tmp_words = arg_word.split()
                         if tmp_words[1] in ['in', 'to', 'on', 'by', 'for', 'out', 'below']:
                             question.append(tmp_words[1])
+                        elif tmp_words[0] in ['in', 'to', 'on', 'by', 'for', 'out', 'below']:
+                            question.append(tmp_words[0])
                         else:
                             # In most case, prep is first word
                             # check the first word is prep
-                            tmp_word = ''
                             for t in decla_tags:
                                 if tmp_words[0] == t['W']:
                                     if 'IN' == t['POS']:
