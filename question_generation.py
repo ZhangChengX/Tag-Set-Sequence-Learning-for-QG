@@ -9,6 +9,7 @@ import helper
 from nltk.data import load
 from libs.wordnet import WordNet
 from distractor_generation import DistractorGeneration
+from train import train_pair
 
 
 class QuestionGeneration:
@@ -47,8 +48,8 @@ class QuestionGeneration:
             declarative = rule_pair.split('|')[0].strip()
             interrogative = rule_pair.split('|')[1].strip()
             ques_word = interrogative.split()[0].capitalize()
-            from train import train_pair
             train_pair(ques_word, declarative, interrogative)
+            self.load_rules()
             return True
         return False
     
@@ -337,8 +338,7 @@ if __name__ == "__main__":
             exit()
         if sentence == 'learn':
             learn_rule = input('\nType in a rule: declarative_sentence | interrogative_sentence \n')
-            if qg.learn_rule(learn_rule):
-                qg.load_rules()
+            qg.learn_rule(learn_rule)
         questions_list = qg.pipeline(sentence)
         for question in questions_list:
             print('Sentence: ' + question['Sentence'])
