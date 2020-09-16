@@ -2,7 +2,7 @@
 # coding: utf-8
 
 import config
-import helper_preprocess
+import preprocess_helper
 from libs.semantic_role_labeling import SemanticRoleLabeling
 from libs.named_entity_recognition import NamedEntityRecognition
 from libs.pos_tagging import PosTagging
@@ -44,6 +44,17 @@ class Preprocess:
         if word_list[0].lower() in helper_preprocess.interrogative_word:
             return []
 
+        sentence = sentence.replace("’", "'")
+        sentence = sentence.replace("`", "'")
+        sentence = sentence.replace('“', '"')
+        sentence = sentence.replace('”', '"')
+        sentence = sentence.replace("'ve", " have")
+        
+        # didn't -> did not, haven't -> have not, can't -> can not
+        if "can't" in sentence:
+            sentence = sentence.replace("'t", ' not')
+        sentence = sentence.replace("n't", ' not')
+
         # Remove the continuous prep in the begining of the sentence
         is_break = False
         for i, w in enumerate(word_list):
@@ -54,63 +65,7 @@ class Preprocess:
             else:
                 is_break = True
 
-        # if word_list[0].lower() in ['and', 'but', 'for', 'or', 'plus', 'so', 'therefore', 'because']:
-        #     sentence = sentence.replace(word_list[0], '')
-
-        sentence = sentence.replace("’", "'")
-        sentence = sentence.replace("`", "'")
-        sentence = sentence.replace('“', '"')
-        sentence = sentence.replace('”', '"')
-        sentence = sentence.replace("'ve", " have")
-        # didn't -> did not, haven't -> have not, can't -> can not
-        if "can't" in sentence:
-            sentence = sentence.replace("'t", ' not')
-        sentence = sentence.replace("n't", ' not')
-
-        # Semantic Role Labeling
-        sr_tags_list = self._srl.predict(sentence)
-        if not sr_tags_list:
-            return []
-
-        # POS Tagging
-        pos_tags = self._pos.predict(sentence)
-
-        # Named Entity Information
-        ne_tags = self._ner.predict(sentence)
-
-        if config.debug:
-            print('### Pre-processing ###')
-            print('Before preprocess_sr_tags():')
-            print('sr_tags_list = ' + str(sr_tags_list))
-
-        sr_tags_list = helper_preprocess.preprocess_sr_tags(sr_tags_list, pos_tags)
-
-        if config.debug:
-            print('After preprocess_sr_tags():')
-            print('sr_tags_list = ' + str(sr_tags_list))
-            print('')
-        
-        rst = []
-        for sr_tags in sr_tags_list:
-            sr_t_list = [t[0][:4] for t in sr_tags if t[0][:4] != 'ARGM']
-            if len(sr_t_list) < 2:
-                continue
-            merged_tags = helper_preprocess.merge_tags(pos_tags, ne_tags, sr_tags)
-            rst.append(helper_preprocess.lowercase_first_word(merged_tags))
-
-            if config.debug:
-                print('### merged_tags: ###')
-                print('Sentence: ' + sentence)
-                print('Sub Sentence: ' + str(' '.join([t[1] for t in sr_tags])))
-                print('pos_tags = ' + str(pos_tags))
-                print('ne_tags = ' + str(ne_tags))
-                print('sr_tags = ' + str(sr_tags))
-                print('merged_tags = ' + str(merged_tags))
-                print([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in merged_tags])
-                print('')
-        
-        # return [[{'a':'b'}]]
-        return rst
+        return self.pipeline(sentence)
         
     def preprocess_learning(self, sentence:str):
         sentence = sentence.strip()
@@ -124,11 +79,14 @@ class Preprocess:
         sentence = sentence.replace('“', '"')
         sentence = sentence.replace('”', '"')
         sentence = sentence.replace("'ve", " have")
-        # didn't -> did not, haven't -> have not, can't -> can not
+
         if "can't" in sentence:
             sentence = sentence.replace("'t", ' not')
         sentence = sentence.replace("n't", ' not')
 
+        return self.pipeline(sentence)
+
+    def pipeline(self, sentence:str):
         # Semantic Role Labeling
         sr_tags_list = self._srl.predict(sentence)
         if not sr_tags_list:
@@ -170,7 +128,7 @@ class Preprocess:
                 print('merged_tags = ' + str(merged_tags))
                 print([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in merged_tags])
                 print('')
-        
+        # return [[{'a':'b'}]]
         return rst
 
     def srl(self, sentence:str):
