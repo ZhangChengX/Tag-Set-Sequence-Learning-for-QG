@@ -3,7 +3,6 @@
 
 from allennlp.predictors.predictor import Predictor
 import allennlp_models.structured_prediction
-# from nltk.tree import Tree
 import config
 
 
@@ -17,6 +16,7 @@ class ConstituencyParsing(object):
     def predict(self, sentence):
         raw_dict = self.predictor.predict(sentence)
         # print(raw_dict)
+        # from nltk.tree import Tree
         # return Tree.fromstring(raw_dict['trees'])
         return raw_dict['trees']
 

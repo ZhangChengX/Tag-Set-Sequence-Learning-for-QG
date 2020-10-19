@@ -14,11 +14,11 @@ qg = QuestionGeneration()
 @app.route('/')
 def index():
     data = ['Usage: ',\
-            'http://localhost:10080/generate?text=Any%20sentence',\
-            'http://localhost:10080/pipeline?sentence=Any%20sentence',\
-            'http://localhost:10080/preprocess?sentence=Any%20sentence',\
-            'http://localhost:10080/preprocess_learning?sentence=',\
-            'http://localhost:10080/learn?sentence=',\
+            'http://localhost:10081/generate?text=Any%20sentence',\
+            'http://localhost:10081/pipeline?sentence=Any%20sentence',\
+            'http://localhost:10081/preprocess?sentence=Any%20sentence',\
+            'http://localhost:10081/preprocess_learning?sentence=',\
+            'http://localhost:10081/learn?sentence=',\
             '/srl?sentence=',\
             '/pos?sentence=',\
             '/ner?sentence=',\

@@ -5,68 +5,93 @@ interrogative_word = ['who', 'whose', 'what', 'where', 'when', 'which', 'why', '
 
 
 def preprocess_sr_tags(sr_tags_list:list, sentence:str):
+    # if len(sr_tags_list) == 1:
+    #     return sr_tags_list
 
-    def reformat(sr_tags_list):
-        rst = []
-        for sr_dict in sr_tags_list:
-            # Re-format
-            sr_tags = []
-            for k, v in sr_dict.items():
-                sr_tags.append((k, v))
-            rst.append(sr_tags)
-        return rst
-
-    if len(sr_tags_list) == 1:
-        return reformat(sr_tags_list)
-    verbs = []
+    v_word_list = [] # To store the verb and the previous verb of the loop
     new_sr_tags_list = []
     for sr_tags in sr_tags_list:
+        sr_tags_keys = [t[0] for t in sr_tags]
         # ignore if len(sr_tags) is 0 or 2
-        if len(sr_tags) == 1 and 'V' in sr_tags:
-            verbs.append(sr_tags['V'])
+        if 'V' not in sr_tags_keys:
+            continue
+        v_word = sr_tags[sr_tags_keys.index('V')][1]
+        if len(sr_tags) == 1 and 'V' in sr_tags_keys:
+            v_word_list.append(v_word)
         if len(sr_tags) > 2:
-            # # sr_tags must contain 2 ARGs, e.g. ARG0 and ARG1, not include ARGM.
-            # # arg_tag >= 2 means sr_tags contains at least 3 tags, 2 for ARGs, 1 for V
-            # def is_complete_clause(sr_tags):
-            #     arg_tag = 0
-            #     if len(sr_tags) >= 3:
-            #         for k in sr_tags.keys():
-            #             if k[:4] != 'ARGM' and k[:3] == 'ARG':
-            #                 arg_tag = arg_tag + 1
-            #     return True if len(arg_tag) >=2 else False
             verb_phrase = ''
-            clause = ' '.join([t for t in sr_tags.values()])
-            # len(verbs) may be 0
-            for verb in verbs:
+            clause = ' '.join([t[1] for t in sr_tags])
+            # len(v_word_list) may be 0
+            for previous_v_word in v_word_list:
                 # only merge the verb if it not appears in current clause
-                left_index = clause.find(sr_tags['V']) - len(verb) - 5
-                right_index = left_index + len(sr_tags['V']) + len(verb) + 5
+                left_index = clause.find(v_word) - len(previous_v_word) - 5
                 if left_index < 0: left_index = 0
+                right_index = left_index + len(v_word) + len(previous_v_word) + 5
                 seg_s = clause[left_index:right_index]
-                if verb in seg_s:
+                if previous_v_word in seg_s:
                     continue
-                verb_phrase = verb_phrase + ' ' + verb
+                verb_phrase = verb_phrase + ' ' + previous_v_word
             if verb_phrase != '':
-                sr_tags['V'] = verb_phrase.strip() + ' ' + sr_tags['V']
-            # only process previous V tags, empty the list after the current done.
-            verbs = []
-            # check if there is any preposition word missing in the V
-            # check if any missing prep inside of the V 
-            if ' ' in sr_tags['V'] and sr_tags['V'] not in sentence:
-                v_list = sr_tags['V'].split(' ')
+                v_word = verb_phrase.strip() + ' ' + v_word
+            # only process previous V tags, empty the list after the current loop done.
+            v_word_list = []
+            # check if there is any missing prep inside of the V 
+            if ' ' in v_word and v_word not in sentence:
+                v_list = v_word.split(' ')
                 left_index = sentence.find(v_list[0], 0)
                 right_index = sentence.find(v_list[-1], left_index)
                 new_verb_phrase = sentence[left_index:right_index+len(v_list[-1])]
-                sr_tags['V'] = new_verb_phrase
-            # check if any missing prep surround the V
-            # check left
-            # seg_sentences = sentence.split(sr_tags['V'])
-            # left_words = seg_sentences.split(' ')
-            # TODO 
-            # Bob agreed to take out the trash which was thrown by Tom.
-            # V: agreed to take, missing: out
+                v_word = new_verb_phrase
+                sr_tags[sr_tags_keys.index('V')] = ('V', v_word)
+
+            # if sr sentence is not part of full sentence
+            if ' '.join([t[1] for t in sr_tags]) not in sentence:
+                # check if any missing prep surround the V
+                def append_surrounding_words(sentence, sr_tags, v_word):
+                    seg_sentences = sentence.split(v_word)
+                    # print(seg_sentences)
+                    # check left
+                    left_words = seg_sentences[0].strip().split(' ')
+                    if len(sr_tags) <= sr_tags_keys.index('V') - 1:
+                        return v_word
+                    left_sr_tag = sr_tags[sr_tags_keys.index('V') - 1]
+                    left_sr_words = left_sr_tag[1].split(' ')
+                    print('# left:')
+                    print(left_words)
+                    print(left_sr_words)
+                    if len(left_words) > 0:
+                        if left_words[-1] not in left_sr_words:
+                            v_word = left_words[-1] + ' ' + v_word
+                    print('# after:')
+                    print(v_word)
+                    # check right
+                    right_words = seg_sentences[1].strip().split(' ')
+                    if len(sr_tags) <= sr_tags_keys.index('V') + 1:
+                        return v_word
+                    right_sr_tag = sr_tags[sr_tags_keys.index('V') + 1]
+                    right_sr_words = right_sr_tag[1].split(' ')
+                    print('# right:')
+                    print(right_words)
+                    print(right_sr_words)
+                    if len(right_words) > 0:
+                        if right_words[0] not in right_sr_words:
+                            v_word = v_word + ' ' + right_words[0]
+                    print('# after:')
+                    print(v_word)
+                    return v_word
+
+                print('# v_wrod: ' + v_word)
+                print('# 1st append_surrounding_words()')
+                tmp_v_word = append_surrounding_words(sentence, sr_tags, v_word)
+                if tmp_v_word == v_word:
+                    v_word = tmp_v_word
+                else:
+                    print('# 2nd append_surrounding_words()')
+                    v_word = append_surrounding_words(sentence, sr_tags, tmp_v_word)
+
+            sr_tags[sr_tags_keys.index('V')] = ('V', v_word)
             new_sr_tags_list.append(sr_tags)
-    return reformat(new_sr_tags_list)
+    return new_sr_tags_list
 
 
 # def preprocess_sr_tags2(sr_tags_list:list, sentence:str):

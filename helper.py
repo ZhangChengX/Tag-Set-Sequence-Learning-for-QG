@@ -30,7 +30,7 @@ def srl(sentence):
 
 def ctree(sentence):
     r = requests.get(url = 'http://localhost:' + str(config.port) + '/ctree?sentence=' + sentence)
-    return Tree.fromstring(r.json())
+    return r.json()
 
 def dtree(sentence):
     r = requests.get(url = 'http://localhost:' + str(config.port) + '/dtree?sentence=' + sentence)
@@ -53,7 +53,7 @@ def load_rules(path):
                 rules[filename[:-6]] = json.load(file)
     return rules
 
-def get_sub_trees(tree:Tree, labels = ['NP']):
+def get_tree_nodes(tree:str, labels = ['NP']):
     ''' The height of a tree
         containing no children is 1; the height of a tree
         containing only leaves is 2; and the height of any other
@@ -61,6 +61,7 @@ def get_sub_trees(tree:Tree, labels = ['NP']):
         heights. '''
     # Get subtrees that only contain one level subtree
     # print(list(tree.subtrees()))
+    tree = Tree.fromstring(tree)
     subtrees = list(tree.subtrees(filter=lambda x: x.label() in labels and x.height()<=3 ))
     return [subtree.leaves() for subtree in subtrees]
 

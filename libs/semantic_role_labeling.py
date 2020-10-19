@@ -2,6 +2,7 @@
 
 from allennlp.predictors.predictor import Predictor
 # import allennlp_models.syntax.srl
+# from collections import OrderedDict
 import config
 import re
 
@@ -25,11 +26,16 @@ class SemanticRoleLabeling(object):
             description = verb_item['description']
             items = re.findall(pattern, description)
 
-            label = {}
+            # od = OrderedDict()
+            label = []
             for item in items:
                 l = item[1:-1].split(': ')
-                label[l[0]] = l[1]
+                # od[l[0]] = l[1]
+                label.append((l[0], l[1]))
+
+            # labels.append(od)
             labels.append(label)
-        
+            
+        # print(labels)
         return labels
 

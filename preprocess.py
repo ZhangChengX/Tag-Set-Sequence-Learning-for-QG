@@ -2,7 +2,7 @@
 # coding: utf-8
 
 import config
-import preprocess_helper
+import helper_preprocess
 from libs.semantic_role_labeling import SemanticRoleLabeling
 from libs.named_entity_recognition import NamedEntityRecognition
 from libs.pos_tagging import PosTagging
@@ -92,23 +92,27 @@ class Preprocess:
         if not sr_tags_list:
             return []
 
+        if config.debug:
+            print('### Pre-processing ###')
+            print('Before preprocess_sr_tags():')
+            print('sr_tags_list = ' + str(sr_tags_list))
+
+        sr_tags_list = helper_preprocess.preprocess_sr_tags(sr_tags_list, sentence)
+
+        if config.debug:
+            print('After preprocess_sr_tags():')
+            print('sr_tags_list = ' + str(sr_tags_list))
+            print('')
+
         # POS Tagging
         pos_tags = self._pos.predict(sentence)
 
         # Named Entity Information
         ne_tags = self._ner.predict(sentence)
 
-        if config.debug:
-            print('### Pre-processing ###')
-            print('Before preprocess_sr_tags():')
-            print('sr_tags_list = ' + str(sr_tags_list))
-
-        sr_tags_list = helper_preprocess.preprocess_sr_tags(sr_tags_list, pos_tags)
-
-        if config.debug:
-            print('After preprocess_sr_tags():')
-            print('sr_tags_list = ' + str(sr_tags_list))
-            print('')
+        # Constituency Parsing
+        # cp_tree = self._ctree.predict(sentence)
+        # TODO
         
         rst = []
         for sr_tags in sr_tags_list:

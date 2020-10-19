@@ -52,9 +52,6 @@ class QuestionGeneration:
             self.load_rules()
             return True
         return False
-    
-    def preprocess(self, sentence:str):
-        return self.preprocess_instance.preprocess(sentence)
 
     def generate(self, text):
         rst = []
@@ -93,7 +90,7 @@ class QuestionGeneration:
         question_list = []
 
         # Get merged tags list
-        decla_tags_list = self.preprocess(sentence)
+        decla_tags_list = self.preprocess_instance.preprocess(sentence)
 
         # # Previous version, rules based QG
         # import rule_based_rules as rulebased
@@ -277,40 +274,41 @@ class QuestionGeneration:
                         print('')
 
                     question_list.append({'Sentence': sentence, 'Question': question, 'Answer': answer})
-
-            # Gap Question
-            if self.generate_filling_in_question:
-                filling_in_qestions = self.generate_filling_in_question(sentence)
-                question_list = question_list + filling_in_qestions
-                if config.debug:
-                    print('### generate_filling_in_question ###')
-                    print(filling_in_qestions)
-                    print('')
-
-            # Remove duplicated question
-            tmp_ques_list = []
-            tmp_what_ques_list = []
-            tmp_other_ques_list = []
-            for question in question_list.copy():
-                if question['Question'] in tmp_ques_list:
-                    question_list.remove(question)
-                elif question['Question'][:4].lower() == 'what' and \
-                    'Who' + question['Question'][4:] in [q['Question'] for q in question_list]:
-                    # Remove duplicated What question
-                    question_list.remove(question)
+            
+            if question_list:
+                # Gap Question
+                if self.generate_filling_in_question:
+                    filling_in_qestions = self.generate_filling_in_question(sentence)
+                    question_list = question_list + filling_in_qestions
                     if config.debug:
-                        print('### Removed duplicated What question ###')
-                        print(question)
+                        print('### generate_filling_in_question ###')
+                        print(filling_in_qestions)
                         print('')
-                else:
-                    tmp_ques_list.append(question['Question'])
+
+                # Remove duplicated question
+                tmp_ques_list = []
+                tmp_what_ques_list = []
+                tmp_other_ques_list = []
+                for question in question_list.copy():
+                    if question['Question'] in tmp_ques_list:
+                        question_list.remove(question)
+                    elif question['Question'][:4].lower() == 'what' and \
+                        'Who' + question['Question'][4:] in [q['Question'] for q in question_list]:
+                        # Remove duplicated What question
+                        question_list.remove(question)
+                        if config.debug:
+                            print('### Removed duplicated What question ###')
+                            print(question)
+                            print('')
+                    else:
+                        tmp_ques_list.append(question['Question'])
 
         return question_list
 
     def generate_filling_in_question(self, sentence):
         # Generate gap question
         ctree = self.preprocess_instance.ctree(sentence.strip())
-        entities = helper.get_sub_trees(ctree, ['NP'])
+        entities = helper.get_tree_nodes(ctree, ['NP'])
         # Build candidate questions
         candidates = []
         # if len(entities) > 7:
