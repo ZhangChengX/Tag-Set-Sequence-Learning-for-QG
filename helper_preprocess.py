@@ -65,19 +65,20 @@ def preprocess_sr_tags(sr_tags_list:list, sentence:str):
                     print('# after:')
                     print(v_word)
                     # check right
-                    right_words = seg_sentences[1].strip().split(' ')
-                    if len(sr_tags) <= sr_tags_keys.index('V') + 1:
-                        return v_word
-                    right_sr_tag = sr_tags[sr_tags_keys.index('V') + 1]
-                    right_sr_words = right_sr_tag[1].split(' ')
-                    print('# right:')
-                    print(right_words)
-                    print(right_sr_words)
-                    if len(right_words) > 0:
-                        if right_words[0] not in right_sr_words:
-                            v_word = v_word + ' ' + right_words[0]
-                    print('# after:')
-                    print(v_word)
+                    if len(seg_sentences) > 1:
+                        right_words = seg_sentences[1].strip().split(' ')
+                        if len(sr_tags) <= sr_tags_keys.index('V') + 1:
+                            return v_word
+                        right_sr_tag = sr_tags[sr_tags_keys.index('V') + 1]
+                        right_sr_words = right_sr_tag[1].split(' ')
+                        print('# right:')
+                        print(right_words)
+                        print(right_sr_words)
+                        if len(right_words) > 0:
+                            if right_words[0] not in right_sr_words:
+                                v_word = v_word + ' ' + right_words[0]
+                        print('# after:')
+                        print(v_word)
                     return v_word
 
                 print('# v_wrod: ' + v_word)

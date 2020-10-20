@@ -82,9 +82,11 @@ def pipeline():
     data = qg.pipeline(sentence)
     return jsonify(data)
 
-@app.route('/generate')
+@app.route('/generate', methods=['GET', 'POST'])
 def generate():
     text = request.args.get('text')
+    if not text:
+        text = request.form['text']
     data = qg.generate(text)
     return jsonify(data)
 

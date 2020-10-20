@@ -73,13 +73,13 @@ class QuestionGeneration:
             dg = DistractorGeneration(text)
 
         for sentence in sentences:
-            # QG
+            # Generate Questions
             qaps = self.pipeline(sentence)
-            if len(qaps)>0: pos_tags = helper.pos(qaps[0]['Sentence'])
-            # Generate distractors
+            # Generate Distractors
             if self.generate_distractor:
+                if len(qaps) > 0: pos_tags = helper.pos(qaps[0]['sentence'])
                 for qap in qaps:
-                    qap['Distractors'] = dg.distractors(qap['Answer'], pos_tags)
+                    qap['distractors'] = dg.distractors(qap['answer'], pos_tags)
                     rst.append(qap)
             else:
                 rst = rst + qaps
@@ -273,7 +273,7 @@ class QuestionGeneration:
                         print(answer)
                         print('')
 
-                    question_list.append({'Sentence': sentence, 'Question': question, 'Answer': answer})
+                    question_list.append({'sentence': sentence, 'question': question, 'answer': answer})
             
             if question_list:
                 # Gap Question
@@ -290,10 +290,10 @@ class QuestionGeneration:
                 tmp_what_ques_list = []
                 tmp_other_ques_list = []
                 for question in question_list.copy():
-                    if question['Question'] in tmp_ques_list:
+                    if question['question'] in tmp_ques_list:
                         question_list.remove(question)
-                    elif question['Question'][:4].lower() == 'what' and \
-                        'Who' + question['Question'][4:] in [q['Question'] for q in question_list]:
+                    elif question['question'][:4].lower() == 'what' and \
+                        'Who' + question['question'][4:] in [q['question'] for q in question_list]:
                         # Remove duplicated What question
                         question_list.remove(question)
                         if config.debug:
@@ -301,7 +301,7 @@ class QuestionGeneration:
                             print(question)
                             print('')
                     else:
-                        tmp_ques_list.append(question['Question'])
+                        tmp_ques_list.append(question['question'])
 
         return question_list
 
@@ -322,9 +322,9 @@ class QuestionGeneration:
                 continue
             if candidate_gap == sentence:
                 continue
-            candidate_q['Sentence'] = sentence
-            candidate_q['Question'] = gap_question
-            candidate_q['Answer'] = candidate_gap
+            candidate_q['sentence'] = sentence
+            candidate_q['question'] = gap_question
+            candidate_q['answer'] = candidate_gap
             candidates.append(candidate_q)
         # print(candidates)
         return candidates
@@ -343,9 +343,9 @@ if __name__ == "__main__":
             qg.learn_rule(learn_rule)
         questions_list = qg.pipeline(sentence)
         for question in questions_list:
-            print('Sentence: ' + question['Sentence'])
-            print('Question: ' + question['Question'])
-            print('Answer: ' + question['Answer'])
+            print('Sentence: ' + question['sentence'])
+            print('Question: ' + question['question'])
+            print('Answer: ' + question['answer'])
             print('')
         print('')
     

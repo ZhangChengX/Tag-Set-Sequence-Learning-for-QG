@@ -34,13 +34,21 @@ class DistractorGeneration:
         # pos_tags = helper.pos(sentence)
         pos_tags_word_list = [t[0] for t in pos_tags]
         for word in answer.split(' '):
-            index = pos_tags_word_list.index(word)
-            pos_tag = pos_tags[index][1]
-            ne_tag = ''
-            for k, v in self._ne.items():
-                if word in v:
-                    ne_tag = k
-            correct_tags.append({'W': word, 'POS': pos_tag, 'NE': ne_tag})
+            if word in pos_tags_word_list:
+                index = pos_tags_word_list.index(word)
+                pos_tag = pos_tags[index][1]
+                ne_tag = ''
+                for k, v in self._ne.items():
+                    if word in v:
+                        ne_tag = k
+                correct_tags.append({'W': word, 'POS': pos_tag, 'NE': ne_tag})
+
+        if not correct_tags:
+            if config.debug:
+                print('# No answer tags, the answer word can not be found in pos_tags_word_list')
+                print(answer.split(' '))
+                print(pos_tags_word_list)
+            return []
 
         correct_tags.reverse()
         
