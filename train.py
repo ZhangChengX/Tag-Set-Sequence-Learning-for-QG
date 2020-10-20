@@ -84,34 +84,40 @@ def train_pair(ques_word, declarative, interrogative):
     # if not os.path.isfile(filename):
     #     with open(filename, 'w') as file:
     #         file.write('{}')
-    rules = None
-    with open(filename, 'w+') as file:
-        # if file is empty
-        if file.read().strip() == '':
-            rules = {}
+    rules = {}
+
+    try:
+        with open(filename, 'r') as file:
+            text = file.read()
+            if text != '' and text != '{}':
+                rules = json.loads(text)
+    except Exception as e:
+        pass
+        # raise e
+    
+    decla_tags_list = helper.preprocess_learning(declarative)
+    for decla_tags in decla_tags_list:
+        if len(declarative.strip()) - len(' '.join(t['W'] for t in decla_tags)) > 3:
+            continue
+        interro_tags_list = helper.preprocess_learning(interrogative)
+        if len(interro_tags_list) > 1:
+            print('### Length of interro_tags_list > 1 ###')
+            interro_tags = interro_tags_list[-1]
+            print(pair[0])
+            print(decla_tags_list)
+            print(pair[1])
+            print(interro_tags_list)
+            continue
+        elif len(interro_tags_list) == 1:
+            interro_tags = interro_tags_list[0]
         else:
-            rules = json.load(file)
-        decla_tags_list = helper.preprocess_learning(declarative)
-        for decla_tags in decla_tags_list:
-            if len(declarative.strip()) - len(' '.join(t['W'] for t in decla_tags)) > 3:
-                continue
-            interro_tags_list = helper.preprocess_learning(interrogative)
-            if len(interro_tags_list) > 1:
-                print('### Length of interro_tags_list > 1 ###')
-                interro_tags = interro_tags_list[-1]
-                print(pair[0])
-                print(decla_tags_list)
-                print(pair[1])
-                print(interro_tags_list)
-                continue
-            else:
-                interro_tags = interro_tags_list[0]
-            new_interro_tags = helper.get_new_interro_tags_by_decla_interro_tags(decla_tags, interro_tags)
-            rule = {' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags]): \
-                    ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in new_interro_tags])}
-            print(rule)
-            rules.update(rule)
-    # with open(filename, 'w') as file:
+            continue
+        new_interro_tags = helper.get_new_interro_tags_by_decla_interro_tags(decla_tags, interro_tags)
+        rule = {' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags]): \
+                ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in new_interro_tags])}
+        print(rule)
+        rules.update(rule)
+    with open(filename, 'w') as file:
         json.dump(rules, file)
     reload_rules()
     incremental_file = config.rules_path + ques_word + '.incremental.txt'
@@ -142,8 +148,10 @@ def train_pair_test(ques_word, declarative, interrogative):
                 print(pair[1])
                 print(interro_tags_list)
                 continue
-            else:
+            elif len(interro_tags_list) == 1:
                 interro_tags = interro_tags_list[0]
+            else:
+                continue
             new_interro_tags = helper.get_new_interro_tags_by_decla_interro_tags(decla_tags, interro_tags)
             rule = {' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in decla_tags]): \
                     ' '.join([tag['POS'] + ':' + tag['NE'] + ':' + tag['SR'] for tag in new_interro_tags])}
@@ -156,8 +164,9 @@ def train_pair_test(ques_word, declarative, interrogative):
     #     file.write(declarative + ' | ' + interrogative + '\n')
 
 def reload_rules():
-    helper.load_rules(config.rules_path)
+    helper.load_rules_remotely()
     print('Rules reloaded.')
+    pass
 
 
 if __name__ == "__main__":
@@ -165,8 +174,8 @@ if __name__ == "__main__":
     arguments = ' '.join(argv[1:])
     if '|' in arguments:
         pair = arguments.split('|')
-        # train_pair(pair[1].split()[0].capitalize(), pair[0], pair[1])
-        train_pair_test(pair[1].split()[0].capitalize(), pair[0], pair[1])
+        train_pair(pair[1].split()[0].capitalize(), pair[0], pair[1])
+        # train_pair_test(pair[1].split()[0].capitalize(), pair[0], pair[1])
     elif '.txt' in arguments:
         train_file(arguments)
     elif 'all' in arguments:
@@ -174,7 +183,7 @@ if __name__ == "__main__":
         train_file('When.txt')
         train_file('Where.txt')
         train_file('Who.txt')
-        train_file('Why.txt')
+        # train_file('Why.txt')
         train_file('How many.txt')
     else:
         print('Usage:')

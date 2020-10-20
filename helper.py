@@ -36,6 +36,10 @@ def dtree(sentence):
     r = requests.get(url = 'http://localhost:' + str(config.port) + '/dtree?sentence=' + sentence)
     return r.json()
 
+def load_rules_remotely():
+    requests.get(url = 'http://localhost:' + str(config.port) + '/load_rules_remotely')
+    return None
+
 def segment_by_sentence(text, tokenizer):
     # from nltk.tokenize import sent_tokenize
     # sentence_list = sent_tokenize(text)
@@ -49,8 +53,12 @@ def load_rules(path):
     rules = {}
     for filename in os.listdir(path):
         if filename[-6:] == '.rules':
+            if config.debug:
+                print('Loading rules: ' + filename)
             with open(path + filename) as file:
-                rules[filename[:-6]] = json.load(file)
+                text = file.read()
+                if text != '' and text != '{}':
+                    rules[filename[:-6]] = json.loads(text)
     return rules
 
 def get_tree_nodes(tree:str, labels = ['NP']):

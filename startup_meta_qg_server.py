@@ -96,6 +96,11 @@ def fillingupqg():
     data = qg.generate_filling_in_question(sentence)
     return jsonify(data)
 
+@app.route('/load_rules_remotely')
+def load_rules_remotely():
+    qg.load_rules()
+    return jsonify('Success')
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.port, debug=config.debug)
