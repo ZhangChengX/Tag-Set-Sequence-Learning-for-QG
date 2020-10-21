@@ -89,6 +89,10 @@ class QuestionGeneration:
     def pipeline(self, sentence:str):
         question_list = []
 
+        if config.debug:
+            print('### Sentence: ')
+            print(sentence)
+
         # Get merged tags list
         decla_tags_list = self.preprocess_instance.preprocess(sentence)
 

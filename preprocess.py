@@ -123,7 +123,7 @@ class Preprocess:
             rst.append(helper_preprocess.lowercase_first_word(merged_tags))
 
             if config.debug:
-                print('### merge_tags_pos_based: ###')
+                print('### merge_tags: ###')
                 print('Sentence: ' + sentence)
                 print('Sub Sentence: ' + str(' '.join([t[1] for t in sr_tags])))
                 print('pos_tags = ' + str(pos_tags))

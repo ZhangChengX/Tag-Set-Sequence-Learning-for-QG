@@ -48,12 +48,15 @@ def preprocess_sr_tags(sr_tags_list:list, sentence:str):
             if ' '.join([t[1] for t in sr_tags]) not in sentence:
                 # check if any missing prep surround the V
                 def append_surrounding_words(sentence, sr_tags, v_word):
+                    if v_word not in sentence:
+                        return v_word
                     seg_sentences = sentence.split(v_word)
-                    # print(seg_sentences)
                     # check left
                     left_words = seg_sentences[0].strip().split(' ')
                     if len(sr_tags) <= sr_tags_keys.index('V') - 1:
                         return v_word
+                    print('# sentence')
+                    print(seg_sentences)
                     left_sr_tag = sr_tags[sr_tags_keys.index('V') - 1]
                     left_sr_words = left_sr_tag[1].split(' ')
                     print('# left:')
@@ -87,6 +90,7 @@ def preprocess_sr_tags(sr_tags_list:list, sentence:str):
                 if tmp_v_word == v_word:
                     v_word = tmp_v_word
                 else:
+                    print('# v_wrod: ' + tmp_v_word)
                     print('# 2nd append_surrounding_words()')
                     v_word = append_surrounding_words(sentence, sr_tags, tmp_v_word)
 
@@ -269,7 +273,7 @@ def merge_tags_sr_based(pos_tags:list, ne_tags:list, sr_tags:list):
     word_list = [tag[0] for tag in pos_tags]
     for sr_tag in sr_tags: 
         sr_tag_word_list = sr_tag[1].split(' ')
-        tmp = {}
+        tags = {}
         phrase_ne_tag_list = []
         for w in sr_tag_word_list:
             if w in word_list:
@@ -289,8 +293,8 @@ def merge_tags_sr_based(pos_tags:list, ne_tags:list, sr_tags:list):
                     ne_tag = 'PER'
                 if 'ORG' in phrase_ne_tag_list:
                     ne_tag = 'ORG'
-                tmp = {'POS': pos_tag, 'NE': ne_tag, 'SR': sr_t, 'W': sr_tag[1]}
-        tags_list.append(tmp)
+                tags = {'POS': pos_tag, 'NE': ne_tag, 'SR': sr_t, 'W': sr_tag[1]}
+        if tags: tags_list.append(tags)
     # remove the first element if it is ArgM
     if 'ARGM-' == tags_list[0]['SR'][:5]:
         tags_list.pop(0)
@@ -352,9 +356,9 @@ def merge_tags_pos_based(pos_tags:list, ne_tags:list, sr_tags:list):
                     ne_tag = 'ORG'
             # if phrase_ne_tag_list.count('') > 1:
             #     ne_tag = ''
-            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
-            # print(tmp)
-            tags_list.append(tmp)
+            tags = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
+            # print(tags)
+            tags_list.append(tags)
             last_value = current_value
         elif is_eq_sr_tag:
             # Empty the list if the word is not in a phase
@@ -362,9 +366,9 @@ def merge_tags_pos_based(pos_tags:list, ne_tags:list, sr_tags:list):
             # # Get key by value in dict
             # key = list(sr_tags.keys())[list(sr_tags.values()).index(current_value)]
             index = sr_tags_words.index(current_value)
-            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
-            # print(tmp)
-            tags_list.append(tmp)
+            tags = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_tags[index][0], 'W': current_value}
+            # print(tags)
+            tags_list.append(tags)
         else:
             # Empty the list if the word is not in a phase
             phrase_ne_tag_list = []
@@ -376,10 +380,10 @@ def merge_tags_pos_based(pos_tags:list, ne_tags:list, sr_tags:list):
                 sr_t = 'ARGM-NEG'
             else:
                 sr_t = ''
-            tmp = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_t, 'W': pos_tags[i][0]}
-            # print(tmp)
+            tags = {'POS': pos_tags[i][1], 'NE': ne_tag, 'SR': sr_t, 'W': pos_tags[i][0]}
+            # print(tags)
             # print(pos_tags[i][0])
-            tags_list.append(tmp)
+            tags_list.append(tags)
         is_in_sr_tag = False
         is_eq_sr_tag = False
         i = i + 1
