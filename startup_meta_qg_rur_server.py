@@ -24,7 +24,8 @@ def index():
             '/ner?sentence=',\
             '/ctree?sentence=',\
             '/dtree?sentence=',\
-            '/filling_up_qg?sentence='
+            '/filling_up_qg?sentence=',\
+            '/load_rules_remotely'
             ]
     return jsonify(data)
 

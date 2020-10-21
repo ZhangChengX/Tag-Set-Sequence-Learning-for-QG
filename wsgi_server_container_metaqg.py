@@ -2,7 +2,7 @@
 # coding: utf-8
 
 from gevent.pywsgi import WSGIServer
-from nlp_server import app
+from startup_meta_qg_rur_server import app
 import config
 
 # pywsgi.MAX_REQUEST_LINE = 819200
