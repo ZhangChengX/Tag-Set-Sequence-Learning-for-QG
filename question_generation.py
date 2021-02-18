@@ -24,6 +24,7 @@ class QuestionGeneration:
     tokenizer = None
     preprocess_instance = None
     generate_filling_in_question = True
+    generate_cloze_question = True
     generate_distractor = True
 
     def __init__(self):
@@ -31,7 +32,7 @@ class QuestionGeneration:
         self.rules = self.load_rules()
         self.tokenizer = load('tokenizers/punkt/{0}.pickle'.format('english'))
         if config.dev_mode:
-            self.preprocess_instance = type('', (object,), {'preprocess': lambda s: helper.preprocess(s), 'ctree': lambda s: helper.ctree(s)})
+            self.preprocess_instance = type('', (object,), {'preprocess': lambda s: helper.preprocess(s), 'ctree': lambda s: helper.ctree(s), 'pos': lambda s: helper.pos(s)})
         else:
             from preprocess import Preprocess
             self.preprocess_instance = Preprocess()
@@ -68,6 +69,10 @@ class QuestionGeneration:
         # sentences = helper.segment_by_sentence(text)
         sentences = helper.segment_by_sentence(text, self.tokenizer)
 
+        # Generate Cloze Question
+        if self.generate_cloze_question:
+            rst = self.generate_cloze_question(sentences)
+
         # Generate distractors
         if self.generate_distractor:
             dg = DistractorGeneration(text)
@@ -79,7 +84,14 @@ class QuestionGeneration:
             if self.generate_distractor:
                 if len(qaps) > 0: pos_tags = helper.pos(qaps[0]['sentence'])
                 for qap in qaps:
+                    # Filter useless answer
+                    if qap['answer'].lower() in ['i', 'me', 'it', 'its', 'you', 'he', 'she', 'him', 'her', 'they', 'them', 'our', 'us']:
+                        continue
                     qap['distractors'] = dg.distractors(qap['answer'], pos_tags)
+                    # Filter if the distractors are not enough
+                    if self.generate_distractor:
+                        if len(qap['distractors']) < 3:
+                            continue
                     rst.append(qap)
             else:
                 rst = rst + qaps
@@ -277,10 +289,10 @@ class QuestionGeneration:
                         print(answer)
                         print('')
 
-                    question_list.append({'sentence': sentence, 'question': question, 'answer': answer})
+                    question_list.append({'type':'choice', 'sentence': sentence, 'question': question, 'answer': answer})
             
             if question_list:
-                # Gap Question
+                # Filling in Question
                 if self.generate_filling_in_question:
                     filling_in_qestions = self.generate_filling_in_question(sentence)
                     question_list = question_list + filling_in_qestions
@@ -326,12 +338,43 @@ class QuestionGeneration:
                 continue
             if candidate_gap == sentence:
                 continue
+            candidate_q['type'] = 'choice'
             candidate_q['sentence'] = sentence
             candidate_q['question'] = gap_question
             candidate_q['answer'] = candidate_gap
             candidates.append(candidate_q)
         # print(candidates)
         return candidates
+
+    def generate_cloze_question(self, sentences):
+        cloze_qestion = {}
+        cloze_qestion['type'] = 'cloze'
+        cloze_qestion['answer'] = ''
+        cloze_qestion['distractors'] = []
+        max_len = 10 if len(sentences) > 10 else len(sentences)
+        tmp_text = ''
+        if len(sentences) > 3:
+            tmp_text = ' '.join(sentences[0:max_len])
+        else:
+            return []
+        pos_text_seq = self.preprocess_instance.pos(tmp_text)
+        cloze_qestion['sentence'] = tmp_text
+        tmp_text = ''
+        for pos_tag in pos_text_seq:
+            if pos_tag[1] == 'IN' and pos_tag[0] not in ['that', 'of']:
+                tmp_text = tmp_text + ' <{' + pos_tag[0] + '}>'
+            elif pos_tag[1][:2] == 'VB' and len(pos_tag[1]) == 3 and pos_tag[0] not in ['am', 'is', 'are', 'be']:
+                base_verb = self.wn.get_base_verb(pos_tag[0])
+                if base_verb == pos_tag[0]:
+                    tmp_text = tmp_text + ' ' + pos_tag[0]
+                else:
+                    tmp_text = tmp_text + ' <{' + pos_tag[0] + '|' + base_verb + '}>'
+            elif pos_tag[0] in [',', '.', '!', '?', '\'']:
+                tmp_text = tmp_text  + pos_tag[0]
+            else:
+                tmp_text = tmp_text + ' ' + pos_tag[0]
+        cloze_qestion['question'] = tmp_text
+        return [cloze_qestion]
 
 
 if __name__ == "__main__":
