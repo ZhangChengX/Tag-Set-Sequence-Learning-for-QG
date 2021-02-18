@@ -347,34 +347,43 @@ class QuestionGeneration:
         return candidates
 
     def generate_cloze_question(self, sentences):
-        cloze_qestion = {}
-        cloze_qestion['type'] = 'cloze'
-        cloze_qestion['answer'] = ''
-        cloze_qestion['distractors'] = []
-        max_len = 10 if len(sentences) > 10 else len(sentences)
-        tmp_text = ''
-        if len(sentences) > 3:
-            tmp_text = ' '.join(sentences[0:max_len])
-        else:
-            return []
-        pos_text_seq = self.preprocess_instance.pos(tmp_text)
-        cloze_qestion['sentence'] = tmp_text
-        tmp_text = ''
-        for pos_tag in pos_text_seq:
-            if pos_tag[1] == 'IN' and pos_tag[0] not in ['that', 'of']:
-                tmp_text = tmp_text + ' <{' + pos_tag[0] + '}>'
-            elif pos_tag[1][:2] == 'VB' and len(pos_tag[1]) == 3 and pos_tag[0] not in ['am', 'is', 'are', 'be']:
-                base_verb = self.wn.get_base_verb(pos_tag[0])
-                if base_verb == pos_tag[0]:
-                    tmp_text = tmp_text + ' ' + pos_tag[0]
+
+        def generate_single_cloze_question(text):
+            cloze_qestion = {}
+            cloze_qestion['type'] = 'cloze'
+            cloze_qestion['answer'] = ''
+            cloze_qestion['distractors'] = []
+            pos_text_seq = self.preprocess_instance.pos(text)
+            cloze_qestion['sentence'] = text
+            text = ''
+            for pos_tag in pos_text_seq:
+                if pos_tag[1] == 'IN' and pos_tag[0] not in ['that', 'of']:
+                    text = text + ' <{' + pos_tag[0] + '}>'
+                elif pos_tag[1][:2] == 'VB' and len(pos_tag[1]) == 3 and pos_tag[0] not in ['am', 'is', 'are', 'be']:
+                    base_verb = self.wn.get_base_verb(pos_tag[0])
+                    if base_verb == pos_tag[0]:
+                        text = text + ' ' + pos_tag[0]
+                    else:
+                        text = text + ' <{' + pos_tag[0] + '|' + base_verb + '}>'
+                elif pos_tag[0] in [',', '.', '!', '?', '\'']:
+                    text = text  + pos_tag[0]
                 else:
-                    tmp_text = tmp_text + ' <{' + pos_tag[0] + '|' + base_verb + '}>'
-            elif pos_tag[0] in [',', '.', '!', '?', '\'']:
-                tmp_text = tmp_text  + pos_tag[0]
-            else:
-                tmp_text = tmp_text + ' ' + pos_tag[0]
-        cloze_qestion['question'] = tmp_text
-        return [cloze_qestion]
+                    text = text + ' ' + pos_tag[0]
+            cloze_qestion['question'] = text
+            return cloze_qestion
+
+        candidates = []
+        max_len = 10 if len(sentences) > 10 else len(sentences)
+        text = ''
+        if len(sentences) > 3:
+            text = ' '.join(sentences[0:max_len])
+            cloze_question = generate_single_cloze_question(text)
+            candidates.append(cloze_question)
+            if len(sentences) > 20:
+                text = ' '.join(sentences[-max_len:])
+                cloze_question = generate_single_cloze_question(text)
+                candidates.append(cloze_question)
+        return candidates
 
 
 if __name__ == "__main__":
