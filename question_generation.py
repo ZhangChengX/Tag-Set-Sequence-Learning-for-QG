@@ -357,7 +357,7 @@ class QuestionGeneration:
             cloze_qestion['sentence'] = text
             text = ''
             for pos_tag in pos_text_seq:
-                if pos_tag[1] == 'IN' and pos_tag[0] not in ['that', 'of']:
+                if pos_tag[1] == 'IN' and pos_tag[0] not in ['that', 'of', 'if', 'while']:
                     text = text + ' <{' + pos_tag[0] + '}>'
                 elif pos_tag[1][:2] == 'VB' and len(pos_tag[1]) == 3 and pos_tag[0] not in ['am', 'is', 'are', 'be']:
                     base_verb = self.wn.get_base_verb(pos_tag[0])
